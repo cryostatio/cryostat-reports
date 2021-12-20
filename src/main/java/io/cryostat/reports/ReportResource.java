@@ -1,5 +1,6 @@
 package io.cryostat.reports;
 
+import java.io.BufferedInputStream;
 import java.io.IOException;
 import java.util.concurrent.TimeUnit;
 
@@ -47,7 +48,7 @@ public class ReportResource {
         FileUpload upload = form.file;
         long start = System.nanoTime();
         logger.infof("Received request for %s (%d bytes)", upload.fileName(), upload.size());
-        try (var stream = fs.newInputStream(upload.uploadedFile())) {
+        try (var stream = new BufferedInputStream(fs.newInputStream(upload.uploadedFile()))) {
             return generator.generateReport(stream);
         } finally {
             fs.deleteIfExists(form.file.uploadedFile());
