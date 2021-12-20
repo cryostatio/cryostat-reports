@@ -56,7 +56,12 @@ public class ReportResource {
         try (var stream = fs.newInputStream(upload.uploadedFile())) {
             return generator.generateReport(stream);
         } finally {
-            fs.deleteIfExists(form.file.uploadedFile());
+            boolean deleted = fs.deleteIfExists(form.file.uploadedFile());
+            if (deleted) {
+                logger.infof("Deleted %s", form.file.uploadedFile());
+            } else {
+                logger.infof("Failed to delete %s", form.file.uploadedFile());
+            }
             long end = System.nanoTime();
             logger.infof(
                     "Completed request for %s after %dms",
