@@ -3,6 +3,7 @@ package io.cryostat.reports;
 import java.io.IOException;
 import java.util.concurrent.TimeUnit;
 
+import javax.enterprise.event.Observes;
 import javax.inject.Inject;
 import javax.ws.rs.Consumes;
 import javax.ws.rs.GET;
@@ -14,6 +15,7 @@ import javax.ws.rs.core.MediaType;
 import io.cryostat.core.reports.ReportGenerator;
 import io.cryostat.core.sys.FileSystem;
 
+import io.quarkus.runtime.StartupEvent;
 import io.smallrye.common.annotation.Blocking;
 import org.jboss.logging.Logger;
 import org.jboss.resteasy.reactive.MultipartForm;
@@ -23,6 +25,8 @@ import org.jboss.resteasy.reactive.multipart.FileUpload;
 public class ReportResource {
 
     private final Logger logger = Logger.getLogger(getClass());
+    private static final String SINGLETHREAD_PROPERTY =
+            "org.openjdk.jmc.flightrecorder.parser.singlethreaded";
 
     private final ReportGenerator generator;
     private final FileSystem fs;
@@ -31,6 +35,14 @@ public class ReportResource {
     ReportResource(ReportGenerator generator, FileSystem fs) {
         this.generator = generator;
         this.fs = fs;
+    }
+
+    void onStart(@Observes StartupEvent ev) {
+        logger.infof(
+                "CPUs: %d singlethread: %b maxMemory: %d",
+                Runtime.getRuntime().availableProcessors(),
+                Boolean.getBoolean(SINGLETHREAD_PROPERTY),
+                Runtime.getRuntime().maxMemory());
     }
 
     @Path("health")
