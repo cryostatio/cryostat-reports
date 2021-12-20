@@ -24,18 +24,12 @@ import org.jboss.resteasy.reactive.multipart.FileUpload;
 @Path("/")
 public class ReportResource {
 
-    private final Logger logger = Logger.getLogger(getClass());
     private static final String SINGLETHREAD_PROPERTY =
             "org.openjdk.jmc.flightrecorder.parser.singlethreaded";
 
-    private final ReportGenerator generator;
-    private final FileSystem fs;
-
-    @Inject
-    ReportResource(ReportGenerator generator, FileSystem fs) {
-        this.generator = generator;
-        this.fs = fs;
-    }
+    @Inject Logger logger;
+    @Inject ReportGenerator generator;
+    @Inject FileSystem fs;
 
     void onStart(@Observes StartupEvent ev) {
         logger.infof(
