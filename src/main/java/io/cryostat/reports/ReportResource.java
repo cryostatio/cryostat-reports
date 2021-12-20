@@ -33,10 +33,10 @@ public class ReportResource {
 
     void onStart(@Observes StartupEvent ev) {
         logger.infof(
-                "CPUs: %d singlethread: %b maxMemory: %d",
+                "CPUs: %d singlethread: %b maxMemory: %dM",
                 Runtime.getRuntime().availableProcessors(),
                 Boolean.getBoolean(SINGLETHREAD_PROPERTY),
-                Runtime.getRuntime().maxMemory());
+                Runtime.getRuntime().maxMemory() / (1024 * 1024));
     }
 
     @Path("health")
