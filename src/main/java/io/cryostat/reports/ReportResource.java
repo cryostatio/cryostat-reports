@@ -83,11 +83,12 @@ public class ReportResource {
         if (IOToolkit.isCompressedFile(file.toFile())) {
             file = decompress(file);
             now = System.nanoTime();
+            elapsed = now - start;
             logger.infof(
                     "%s was compressed. Decompressed size: %d bytes. Decompression took %dms",
                     upload.fileName(),
                     file.toFile().length(),
-                    TimeUnit.NANOSECONDS.toMillis(now - start));
+                    TimeUnit.NANOSECONDS.toMillis(elapsed));
         }
 
         Runtime runtime = Runtime.getRuntime();
