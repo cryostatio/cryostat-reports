@@ -7,18 +7,21 @@ import java.util.concurrent.TimeUnit;
 
 import javax.enterprise.event.Observes;
 import javax.inject.Inject;
+import javax.ws.rs.ClientErrorException;
 import javax.ws.rs.Consumes;
 import javax.ws.rs.GET;
 import javax.ws.rs.POST;
 import javax.ws.rs.Path;
 import javax.ws.rs.Produces;
 import javax.ws.rs.core.MediaType;
+import javax.ws.rs.core.Response;
 
 import io.cryostat.core.reports.ReportGenerator;
 import io.cryostat.core.sys.FileSystem;
 
 import io.quarkus.runtime.StartupEvent;
 import io.smallrye.common.annotation.Blocking;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.jboss.logging.Logger;
 import org.jboss.resteasy.reactive.MultipartForm;
 import org.jboss.resteasy.reactive.multipart.FileUpload;
@@ -30,16 +33,20 @@ public class ReportResource {
     private static final String SINGLETHREAD_PROPERTY =
             "org.openjdk.jmc.flightrecorder.parser.singlethreaded";
 
+    @ConfigProperty(name = "io.cryostat.reports.memory-factor", defaultValue = "10")
+    String memoryFactor;
+
     @Inject Logger logger;
     @Inject ReportGenerator generator;
     @Inject FileSystem fs;
 
     void onStart(@Observes StartupEvent ev) {
         logger.infof(
-                "CPUs: %d singlethread: %b maxMemory: %dM",
+                "CPUs: %d singlethread: %b maxMemory: %dM memoryFactor: %s",
                 Runtime.getRuntime().availableProcessors(),
                 Boolean.getBoolean(SINGLETHREAD_PROPERTY),
-                Runtime.getRuntime().maxMemory() / (1024 * 1024));
+                Runtime.getRuntime().maxMemory() / (1024 * 1024),
+                memoryFactor);
     }
 
     @Path("health")
@@ -57,6 +64,7 @@ public class ReportResource {
         java.nio.file.Path file = upload.uploadedFile();
         long start = System.nanoTime();
         logger.infof("Received request for %s (%d bytes)", upload.fileName(), upload.size());
+
         if (IOToolkit.isCompressedFile(file.toFile())) {
             file = decompress(file);
             logger.infof(
@@ -65,6 +73,15 @@ public class ReportResource {
                     file.toFile().length(),
                     TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start));
         }
+
+        Runtime runtime = Runtime.getRuntime();
+        System.gc();
+        long availableMemory = runtime.maxMemory() - runtime.totalMemory() + runtime.freeMemory();
+        long maxHandleableSize = availableMemory / Long.parseLong(memoryFactor);
+        if (file.toFile().length() > maxHandleableSize) {
+            throw new ClientErrorException(Response.Status.REQUEST_ENTITY_TOO_LARGE);
+        }
+
         try (var stream = fs.newInputStream(file)) {
             return generator.generateReport(stream);
         } finally {
