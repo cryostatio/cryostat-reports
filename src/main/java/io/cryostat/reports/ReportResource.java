@@ -1,6 +1,8 @@
 package io.cryostat.reports;
 
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 import java.util.concurrent.TimeUnit;
 
 import javax.enterprise.event.Observes;
@@ -20,6 +22,7 @@ import io.smallrye.common.annotation.Blocking;
 import org.jboss.logging.Logger;
 import org.jboss.resteasy.reactive.MultipartForm;
 import org.jboss.resteasy.reactive.multipart.FileUpload;
+import org.openjdk.jmc.common.io.IOToolkit;
 
 @Path("/")
 public class ReportResource {
@@ -51,21 +54,39 @@ public class ReportResource {
     @Consumes(MediaType.MULTIPART_FORM_DATA)
     public String addRecording(@MultipartForm RecordingFormData form) throws IOException {
         FileUpload upload = form.file;
+        java.nio.file.Path file = upload.uploadedFile();
         long start = System.nanoTime();
         logger.infof("Received request for %s (%d bytes)", upload.fileName(), upload.size());
-        try (var stream = fs.newInputStream(upload.uploadedFile())) {
+        if (IOToolkit.isCompressedFile(file.toFile())) {
+            file = decompress(file);
+            logger.infof(
+                    "%s was compressed. Decompressed size: %d bytes. Decompression took %dms",
+                    upload.fileName(),
+                    file.toFile().length(),
+                    TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start));
+        }
+        try (var stream = fs.newInputStream(file)) {
             return generator.generateReport(stream);
         } finally {
-            boolean deleted = fs.deleteIfExists(form.file.uploadedFile());
+            boolean deleted = fs.deleteIfExists(file);
             if (deleted) {
-                logger.infof("Deleted %s", form.file.uploadedFile());
+                logger.infof("Deleted %s", file);
             } else {
-                logger.infof("Failed to delete %s", form.file.uploadedFile());
+                logger.infof("Failed to delete %s", file);
             }
-            long end = System.nanoTime();
             logger.infof(
                     "Completed request for %s after %dms",
-                    upload.fileName(), TimeUnit.NANOSECONDS.toMillis(end - start));
+                    upload.fileName(), TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start));
+        }
+    }
+
+    private java.nio.file.Path decompress(java.nio.file.Path file) throws IOException {
+        java.nio.file.Path tmp = Files.createTempFile(null, null);
+        try (var stream = IOToolkit.openUncompressedStream(file.toFile())) {
+            fs.copy(stream, tmp, StandardCopyOption.REPLACE_EXISTING);
+            return tmp;
+        } finally {
+            fs.deleteIfExists(file);
         }
     }
 }
