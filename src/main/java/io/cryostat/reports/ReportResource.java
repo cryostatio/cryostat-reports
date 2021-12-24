@@ -5,7 +5,6 @@ import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
@@ -105,11 +104,9 @@ public class ReportResource {
             throw new ServerErrorException(Response.Status.GATEWAY_TIMEOUT);
         }
 
-        CompletableFuture<String> result = new CompletableFuture<>();
         try (var stream = fs.newInputStream(file)) {
-            ForkJoinPool.commonPool()
-                    .submit(() -> result.complete(generator.generateReport(stream)));
-            return result.get(timeout - elapsed, TimeUnit.NANOSECONDS);
+            return CompletableFuture.supplyAsync(() -> generator.generateReport(stream))
+                    .get(timeout - elapsed, TimeUnit.NANOSECONDS);
         } catch (ExecutionException | InterruptedException e) {
             throw new InternalServerErrorException(e);
         } catch (TimeoutException e) {
