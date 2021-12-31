@@ -1,7 +1,7 @@
 package io.cryostat.reports;
 
 import java.util.Set;
-import java.util.concurrent.Executors;
+import java.util.concurrent.ForkJoinPool;
 
 import javax.enterprise.context.ApplicationScoped;
 import javax.ws.rs.Produces;
@@ -16,7 +16,7 @@ public class Producers {
     @ApplicationScoped
     InterruptibleReportGenerator produceReportGenerator() {
         return new InterruptibleReportGenerator(
-                Logger.INSTANCE, Set.of(), Executors.newWorkStealingPool());
+                Logger.INSTANCE, Set.of(), ForkJoinPool.commonPool());
     }
 
     @Produces
