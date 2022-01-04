@@ -96,7 +96,7 @@ jobs:
       id: push-to-quay
       uses: redhat-actions/push-to-registry@v2
       with:
-        image: cryostat
+        image: cryostat-reports
         tags: ${{ steps.tag-image.outputs.tags }}
         registry: quay.io/cryostat
         username: cryostat+bot
