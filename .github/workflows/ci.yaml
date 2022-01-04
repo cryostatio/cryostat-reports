@@ -69,12 +69,7 @@ jobs:
       with:
         name: cryostat-core
         path: /home/runner/.m2/repository/io/cryostat/cryostat-core/
-    - run: git submodule init
-    - run: git submodule update
     - run: mvn -B -U clean verify
-    - name: Print itest logs
-      if: ${{ failure() }}
-      run: ls -1dt target/cryostat-itest-*.log | head -n1 | xargs cat
     - name: Tag images
       id: tag-image
       env:
