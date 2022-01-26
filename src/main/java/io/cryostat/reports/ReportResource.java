@@ -22,6 +22,7 @@ import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 
 import io.cryostat.core.reports.InterruptibleReportGenerator;
+import io.cryostat.core.reports.InterruptibleReportGenerator.ReportGenerationEvent;
 import io.cryostat.core.sys.FileSystem;
 
 import io.quarkus.runtime.StartupEvent;
@@ -77,7 +78,10 @@ public class ReportResource {
         long start = System.nanoTime();
         long now = start;
         long elapsed = 0;
+        ReportGenerationEvent evt = new ReportGenerationEvent(upload.fileName());
+
         logger.infof("Received request for %s (%d bytes)", upload.fileName(), upload.size());
+        evt.begin();
 
         if (IOToolkit.isCompressedFile(file.toFile())) {
             file = decompress(file);
@@ -139,6 +143,10 @@ public class ReportResource {
             logger.infof(
                     "Completed request for %s after %dms",
                     upload.fileName(), TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start));
+            evt.end();
+            if (evt.shouldCommit()) {
+                evt.commit();
+            }
         }
     }
 
