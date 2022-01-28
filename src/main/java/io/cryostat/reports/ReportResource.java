@@ -23,6 +23,7 @@ import javax.ws.rs.core.Response;
 
 import io.cryostat.core.reports.InterruptibleReportGenerator;
 import io.cryostat.core.reports.InterruptibleReportGenerator.ReportGenerationEvent;
+import io.cryostat.core.reports.InterruptibleReportGenerator.ReportResult;
 import io.cryostat.core.sys.FileSystem;
 
 import io.quarkus.runtime.StartupEvent;
@@ -108,7 +109,7 @@ public class ReportResource {
             throw new ServerErrorException(Response.Status.GATEWAY_TIMEOUT);
         }
 
-        Future<String> future = null;
+        Future<ReportResult> future = null;
         try (var stream = fs.newInputStream(file)) {
             future = generator.generateReportInterruptibly(stream);
             var ff = future;
@@ -125,7 +126,12 @@ public class ReportResource {
                                 ff.cancel(true);
                             });
             ctx.addEndHandler().onComplete(ar -> ff.cancel(true));
-            return future.get(timeout - elapsed, TimeUnit.NANOSECONDS);
+
+            evt.setRecordingSizeBytes(future.get().getReportStats().getRecordingSizeBytes());
+            evt.setRulesEvaluated(future.get().getReportStats().getRulesEvaluated());
+            evt.setRulesApplicable(future.get().getReportStats().getRulesApplicable());
+
+            return future.get(timeout - elapsed, TimeUnit.NANOSECONDS).getHtml();
         } catch (ExecutionException | InterruptedException e) {
             throw new InternalServerErrorException(e);
         } catch (TimeoutException e) {
