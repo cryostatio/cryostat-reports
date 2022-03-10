@@ -16,6 +16,7 @@
     <quarkus.platform.group-id>io.quarkus.platform</quarkus.platform.group-id>
     <quarkus.platform.version>2.5.3.Final</quarkus.platform.version>
     <surefire-plugin.version>3.0.0-M5</surefire-plugin.version>
+    <assembly-plugin.version>3.3.0</assembly-plugin.version>
     <com.diffplug.spotless.maven.plugin.version>2.17.7</com.diffplug.spotless.maven.plugin.version>
     <io.cryostat.core.version>2.7.0</io.cryostat.core.version>
     <org.jsoup.version>1.14.3</org.jsoup.version>
@@ -39,10 +40,6 @@
     <dependency>
       <groupId>io.quarkus</groupId>
       <artifactId>quarkus-resteasy-reactive</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>io.quarkus</groupId>
-      <artifactId>quarkus-container-image-docker</artifactId>
     </dependency>
     <dependency>
       <groupId>io.cryostat</groupId>
@@ -165,6 +162,54 @@
       <properties>
         <quarkus.package.type>native</quarkus.package.type>
       </properties>
+    </profile>
+    <profile>
+      <id>native-sources</id>
+      <activation>
+        <property>
+          <name>native-sources</name>
+        </property>
+      </activation>
+      <properties>
+        <quarkus.package.type>native-sources</quarkus.package.type>
+      </properties>
+      <build>
+        <plugins>
+          <plugin>
+            <artifactId>maven-assembly-plugin</artifactId>
+            <version>${assembly-plugin.version}</version>
+            <configuration>
+              <descriptors>
+                <descriptor>src/assembly/native-sources.xml</descriptor>
+              </descriptors>
+              <tarLongFileMode>posix</tarLongFileMode>
+            </configuration>
+            <executions>
+              <execution>
+                <id>assemble-native-sources</id>
+                <phase>package</phase>
+                <goals>
+                  <goal>single</goal>
+                </goals>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+    <profile>
+      <id>container-build</id>
+      <activation>
+        <property>
+          <name>!native-sources</name>
+        </property>
+      </activation>
+      <dependencies>
+        <dependency>
+          <groupId>io.quarkus</groupId>
+          <artifactId>quarkus-container-image-docker</artifactId>
+        </dependency>
+      </dependencies>
     </profile>
   </profiles>
 </project>
