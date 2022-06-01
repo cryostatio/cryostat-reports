@@ -2,8 +2,6 @@ package io.cryostat.reports;
 
 import javax.ws.rs.core.MediaType;
 
-import java.util.Optional;
-
 import org.jboss.resteasy.reactive.PartType;
 import org.jboss.resteasy.reactive.RestForm;
 import org.jboss.resteasy.reactive.multipart.FileUpload;

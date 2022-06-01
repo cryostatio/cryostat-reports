@@ -3,14 +3,13 @@ package io.cryostat.reports;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
+import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-import java.util.stream.Collectors;
-import java.util.Set;
 import java.util.function.Predicate;
-import org.openjdk.jmc.flightrecorder.rules.IRule;
+import java.util.stream.Collectors;
 
 import javax.enterprise.event.Observes;
 import javax.inject.Inject;
@@ -33,24 +32,25 @@ import io.cryostat.core.sys.FileSystem;
 import io.quarkus.runtime.StartupEvent;
 import io.smallrye.common.annotation.Blocking;
 import io.vertx.ext.web.RoutingContext;
+import org.apache.commons.lang3.StringUtils;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.jboss.logging.Logger;
 import org.jboss.resteasy.reactive.MultipartForm;
 import org.jboss.resteasy.reactive.multipart.FileUpload;
 import org.openjdk.jmc.common.io.IOToolkit;
+import org.openjdk.jmc.flightrecorder.rules.IRule;
 import org.openjdk.jmc.flightrecorder.rules.RuleRegistry;
 
 @Path("/")
 public class ReportResource {
 
-    private static final Set<String> RULE_IDS_SET = RuleRegistry.getRules()
-                                                        .stream()
-                                                        .map(rule -> rule.getId())
-                                                        .collect(Collectors.toSet());
+    private static final Set<String> RULE_IDS_SET =
+            RuleRegistry.getRules().stream().map(rule -> rule.getId()).collect(Collectors.toSet());
 
-    private static final Set<String> TOPIC_IDS_SET = Set.of("biased_locking", "classloading", "code_cache", "environment_variables",
-    "exceptions", "file_io", "garbage_collection", "gc_configuration", "heap", "java_application", "jvm_information", "lock_instances", 
-    "memoryleak", "method_profiling", "recording", "socket_io", "system_properties", "tlab", "vm_operations");
+    private static final Set<String> TOPIC_IDS_SET =
+            RuleRegistry.getRules().stream()
+                    .map(rule -> rule.getTopic())
+                    .collect(Collectors.toSet());
 
     private static final String SINGLETHREAD_PROPERTY =
             "org.openjdk.jmc.flightrecorder.parser.singlethreaded";
@@ -127,25 +127,22 @@ public class ReportResource {
         Future<ReportResult> future = null;
         try (var stream = fs.newInputStream(file)) {
             String rawFilter = form.filter;
-            if (rawFilter != null) {
+            if (StringUtils.isNotBlank(rawFilter)) {
                 String[] filterArray = rawFilter.split(",");
                 Predicate<IRule> combinedPredicate = (arg) -> false;
                 for (String filter : filterArray) {
-                    System.out.println(filter);
                     if (RULE_IDS_SET.contains(filter)) {
-                        //System.out.println("hi");
-                        Predicate<IRule> pr = (rule) -> rule.getId().equalsIgnoreCase(filter.trim());
+                        Predicate<IRule> pr =
+                                (rule) -> rule.getId().equalsIgnoreCase(filter.trim());
                         combinedPredicate = combinedPredicate.or(pr);
-                    }
-                    else if (TOPIC_IDS_SET.contains(filter)) {
-                        //System.out.println("helklo");
-                        Predicate<IRule> pr = (rule) -> rule.getTopic().equalsIgnoreCase(filter.trim());
+                    } else if (TOPIC_IDS_SET.contains(filter)) {
+                        Predicate<IRule> pr =
+                                (rule) -> rule.getTopic().equalsIgnoreCase(filter.trim());
                         combinedPredicate = combinedPredicate.or(pr);
                     }
                 }
                 future = generator.generateReportInterruptibly(stream, combinedPredicate);
-            }
-            else {
+            } else {
                 future = generator.generateReportInterruptibly(stream);
             }
             var ff = future;
