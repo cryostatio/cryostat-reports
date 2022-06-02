@@ -17,7 +17,7 @@
     <quarkus.platform.version>2.2.5.Final</quarkus.platform.version>
     <surefire-plugin.version>3.0.0-M5</surefire-plugin.version>
     <com.diffplug.spotless.maven.plugin.version>2.17.7</com.diffplug.spotless.maven.plugin.version>
-    <io.cryostat.core.version>2.11.0-SNAPSHOT</io.cryostat.core.version>
+    <io.cryostat.core.version>2.10.0</io.cryostat.core.version>
     <org.jsoup.version>1.14.3</org.jsoup.version>
   </properties>
   <dependencyManagement>
@@ -70,7 +70,7 @@
     <dependency>
       <groupId>org.apache.commons</groupId>
       <artifactId>commons-lang3</artifactId>
-      <version>3.9</version>
+      <version>3.12.0</version>
     </dependency>
   </dependencies>
   <build>
