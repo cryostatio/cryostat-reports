@@ -49,6 +49,11 @@
       <artifactId>cryostat-core</artifactId>
       <version>${io.cryostat.core.version}</version>
     </dependency>
+    <dependency>
+      <groupId>org.apache.commons</groupId>
+      <artifactId>commons-lang3</artifactId>
+      <version>3.12.0</version>
+    </dependency>
 
     <dependency>
       <groupId>io.quarkus</groupId>
@@ -65,12 +70,6 @@
       <artifactId>jsoup</artifactId>
       <version>${org.jsoup.version}</version>
       <scope>test</scope>
-    </dependency>
-  
-    <dependency>
-      <groupId>org.apache.commons</groupId>
-      <artifactId>commons-lang3</artifactId>
-      <version>3.12.0</version>
     </dependency>
   </dependencies>
   <build>
