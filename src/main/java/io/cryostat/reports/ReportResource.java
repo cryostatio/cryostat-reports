@@ -3,6 +3,7 @@ package io.cryostat.reports;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
@@ -27,8 +28,10 @@ import javax.ws.rs.core.Response;
 import io.cryostat.core.reports.InterruptibleReportGenerator;
 import io.cryostat.core.reports.InterruptibleReportGenerator.ReportGenerationEvent;
 import io.cryostat.core.reports.InterruptibleReportGenerator.ReportResult;
+import io.cryostat.core.reports.InterruptibleReportGenerator.RuleEvaluation;
 import io.cryostat.core.sys.FileSystem;
 
+import com.google.gson.Gson;
 import io.quarkus.runtime.StartupEvent;
 import io.smallrye.common.annotation.Blocking;
 import io.vertx.ext.web.RoutingContext;
@@ -83,11 +86,13 @@ public class ReportResource {
     @Blocking
     @Path("report")
     @POST
-    @Produces(MediaType.TEXT_HTML)
+    @Produces({MediaType.TEXT_HTML, MediaType.APPLICATION_JSON})
     @Consumes(MediaType.MULTIPART_FORM_DATA)
     public String getReport(RoutingContext ctx, @MultipartForm RecordingFormData form)
             throws IOException {
         FileUpload upload = form.file;
+        String filter = form.filter;
+        String eval = form.eval;
 
         java.nio.file.Path file = upload.uploadedFile();
         long timeout = TimeUnit.MILLISECONDS.toNanos(Long.parseLong(timeoutMs));
@@ -124,54 +129,39 @@ public class ReportResource {
             throw new ServerErrorException(Response.Status.GATEWAY_TIMEOUT);
         }
 
-        Future<ReportResult> future = null;
+        Predicate<IRule> predicate = getPredicateRuleFilter(filter);
+        Future<ReportResult> reportFuture = null;
+        Future<Map<String, RuleEvaluation>> evalMapFuture = null;
+
         try (var stream = fs.newInputStream(file)) {
-            String rawFilter = form.filter;
-            if (StringUtils.isNotBlank(rawFilter)) {
-                String[] filterArray = rawFilter.split(",");
-                Predicate<IRule> combinedPredicate = (arg) -> false;
-                for (String filter : filterArray) {
-                    if (RULE_IDS_SET.contains(filter)) {
-                        Predicate<IRule> pr =
-                                (rule) -> rule.getId().equalsIgnoreCase(filter.trim());
-                        combinedPredicate = combinedPredicate.or(pr);
-                    } else if (TOPIC_IDS_SET.contains(filter)) {
-                        Predicate<IRule> pr =
-                                (rule) -> rule.getTopic().equalsIgnoreCase(filter.trim());
-                        combinedPredicate = combinedPredicate.or(pr);
-                    }
-                }
-                future = generator.generateReportInterruptibly(stream, combinedPredicate);
+            if (eval == null) {
+                reportFuture = generator.generateReportInterruptibly(stream, predicate);
+                ctxHelper(ctx, reportFuture);
+                evt.setRecordingSizeBytes(
+                        reportFuture.get().getReportStats().getRecordingSizeBytes());
+                evt.setRulesEvaluated(reportFuture.get().getReportStats().getRulesEvaluated());
+                evt.setRulesApplicable(reportFuture.get().getReportStats().getRulesApplicable());
+                return reportFuture.get(timeout - elapsed, TimeUnit.NANOSECONDS).getHtml();
             } else {
-                future = generator.generateReportInterruptibly(stream);
+                Gson gson = new Gson();
+                evalMapFuture = generator.generateEvalMapInterruptibly(stream, predicate);
+                ctxHelper(ctx, evalMapFuture);
+                // TODO: Add some sort of ReportStats for EvalMap/RuleEvaluation
+                evt.setRecordingSizeBytes(0);
+                evt.setRulesEvaluated(0);
+                evt.setRulesApplicable(0);
+                return gson.toJson(evalMapFuture.get(timeout - elapsed, TimeUnit.NANOSECONDS));
             }
-            var ff = future;
-            ctx.response()
-                    .exceptionHandler(
-                            e -> {
-                                logger.error(e);
-                                ff.cancel(true);
-                            });
-            ctx.request()
-                    .exceptionHandler(
-                            e -> {
-                                logger.error(e);
-                                ff.cancel(true);
-                            });
-            ctx.addEndHandler().onComplete(ar -> ff.cancel(true));
-
-            evt.setRecordingSizeBytes(future.get().getReportStats().getRecordingSizeBytes());
-            evt.setRulesEvaluated(future.get().getReportStats().getRulesEvaluated());
-            evt.setRulesApplicable(future.get().getReportStats().getRulesApplicable());
-
-            return future.get(timeout - elapsed, TimeUnit.NANOSECONDS).getHtml();
         } catch (ExecutionException | InterruptedException e) {
             throw new InternalServerErrorException(e);
         } catch (TimeoutException e) {
             throw new ServerErrorException(Response.Status.GATEWAY_TIMEOUT, e);
         } finally {
-            if (future != null) {
-                future.cancel(true);
+            if (reportFuture != null) {
+                reportFuture.cancel(true);
+            }
+            if (evalMapFuture != null) {
+                evalMapFuture.cancel(true);
             }
             boolean deleted = fs.deleteIfExists(file);
             if (deleted) {
@@ -186,6 +176,42 @@ public class ReportResource {
             if (evt.shouldCommit()) {
                 evt.commit();
             }
+        }
+    }
+
+    private void ctxHelper(RoutingContext ctx, Future<?> ff) {
+        ctx.response()
+                .exceptionHandler(
+                        e -> {
+                            logger.error(e);
+                            ff.cancel(true);
+                        });
+        ctx.request()
+                .exceptionHandler(
+                        e -> {
+                            logger.error(e);
+                            ff.cancel(true);
+                        });
+        ctx.addEndHandler().onComplete(ar -> ff.cancel(true));
+    }
+
+    // TODO: Refactor this as a util function into cryostat-core
+    public static Predicate<IRule> getPredicateRuleFilter(String rawFilter) {
+        if (StringUtils.isNotBlank(rawFilter)) {
+            String[] filterArray = rawFilter.split(",");
+            Predicate<IRule> combinedPredicate = (r) -> false;
+            for (String filter : filterArray) {
+                if (RULE_IDS_SET.contains(filter)) {
+                    Predicate<IRule> pr = (rule) -> rule.getId().equalsIgnoreCase(filter.trim());
+                    combinedPredicate = combinedPredicate.or(pr);
+                } else if (TOPIC_IDS_SET.contains(filter)) {
+                    Predicate<IRule> pr = (rule) -> rule.getTopic().equalsIgnoreCase(filter.trim());
+                    combinedPredicate = combinedPredicate.or(pr);
+                }
+            }
+            return combinedPredicate;
+        } else {
+            return (r) -> true;
         }
     }
 
