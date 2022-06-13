@@ -31,7 +31,6 @@ import io.cryostat.core.reports.InterruptibleReportGenerator.ReportResult;
 import io.cryostat.core.reports.InterruptibleReportGenerator.RuleEvaluation;
 import io.cryostat.core.sys.FileSystem;
 
-import com.google.gson.Gson;
 import io.quarkus.runtime.StartupEvent;
 import io.smallrye.common.annotation.Blocking;
 import io.vertx.ext.web.RoutingContext;
@@ -43,6 +42,8 @@ import org.jboss.resteasy.reactive.multipart.FileUpload;
 import org.openjdk.jmc.common.io.IOToolkit;
 import org.openjdk.jmc.flightrecorder.rules.IRule;
 import org.openjdk.jmc.flightrecorder.rules.RuleRegistry;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 @Path("/")
 public class ReportResource {
@@ -85,100 +86,205 @@ public class ReportResource {
 
     @Blocking
     @Path("report")
-    @POST
-    @Produces({MediaType.TEXT_HTML, MediaType.APPLICATION_JSON})
+    @Produces(MediaType.TEXT_HTML)
     @Consumes(MediaType.MULTIPART_FORM_DATA)
-    public String getReport(RoutingContext ctx, @MultipartForm RecordingFormData form)
+    public class Report {
+        @POST
+        public String getReport(RoutingContext ctx, @MultipartForm RecordingFormData form)
             throws IOException {
-        FileUpload upload = form.file;
-        String filter = form.filter;
-        String eval = form.eval;
+            FileUpload upload = form.file;
+            String filter = form.filter;
+            Predicate<IRule> predicate = getPredicateRuleFilter(filter);
 
-        java.nio.file.Path file = upload.uploadedFile();
-        long timeout = TimeUnit.MILLISECONDS.toNanos(Long.parseLong(timeoutMs));
-        long start = System.nanoTime();
-        long now = start;
-        long elapsed = 0;
-        ReportGenerationEvent evt = new ReportGenerationEvent(upload.fileName());
+            java.nio.file.Path file = upload.uploadedFile();
+            long timeout = TimeUnit.MILLISECONDS.toNanos(Long.parseLong(timeoutMs));
+            long start = System.nanoTime();
+            long now = start;
+            long elapsed = 0;
+            ReportGenerationEvent evt = new ReportGenerationEvent(upload.fileName());
 
-        logger.infof("Received request for %s (%d bytes)", upload.fileName(), upload.size());
-        evt.begin();
+            logger.infof("Received request for %s (%d bytes)", upload.fileName(), upload.size());
+            evt.begin();
 
-        if (IOToolkit.isCompressedFile(file.toFile())) {
-            file = decompress(file);
+            if (IOToolkit.isCompressedFile(file.toFile())) {
+                file = decompress(file);
+                now = System.nanoTime();
+                elapsed = now - start;
+                logger.infof(
+                        "%s was compressed. Decompressed size: %d bytes. Decompression took %dms",
+                        upload.fileName(),
+                        file.toFile().length(),
+                        TimeUnit.NANOSECONDS.toMillis(elapsed));
+            }
+
+            Runtime runtime = Runtime.getRuntime();
+            System.gc();
+            long availableMemory = runtime.maxMemory() - runtime.totalMemory() + runtime.freeMemory();
+            long maxHandleableSize = availableMemory / Long.parseLong(memoryFactor);
+            if (file.toFile().length() > maxHandleableSize) {
+                throw new ClientErrorException(Response.Status.REQUEST_ENTITY_TOO_LARGE);
+            }
+
             now = System.nanoTime();
             elapsed = now - start;
-            logger.infof(
-                    "%s was compressed. Decompressed size: %d bytes. Decompression took %dms",
-                    upload.fileName(),
-                    file.toFile().length(),
-                    TimeUnit.NANOSECONDS.toMillis(elapsed));
-        }
+            if (elapsed > timeout) {
+                throw new ServerErrorException(Response.Status.GATEWAY_TIMEOUT);
+            }
 
-        Runtime runtime = Runtime.getRuntime();
-        System.gc();
-        long availableMemory = runtime.maxMemory() - runtime.totalMemory() + runtime.freeMemory();
-        long maxHandleableSize = availableMemory / Long.parseLong(memoryFactor);
-        if (file.toFile().length() > maxHandleableSize) {
-            throw new ClientErrorException(Response.Status.REQUEST_ENTITY_TOO_LARGE);
-        }
+            Future<ReportResult> reportFuture = null;
 
-        now = System.nanoTime();
-        elapsed = now - start;
-        if (elapsed > timeout) {
-            throw new ServerErrorException(Response.Status.GATEWAY_TIMEOUT);
-        }
-
-        Predicate<IRule> predicate = getPredicateRuleFilter(filter);
-        Future<ReportResult> reportFuture = null;
-        Future<Map<String, RuleEvaluation>> evalMapFuture = null;
-
-        try (var stream = fs.newInputStream(file)) {
-            if (eval == null) {
+            try (var stream = fs.newInputStream(file)) {
                 reportFuture = generator.generateReportInterruptibly(stream, predicate);
                 ctxHelper(ctx, reportFuture);
                 evt.setRecordingSizeBytes(
-                        reportFuture.get().getReportStats().getRecordingSizeBytes());
+                            reportFuture.get().getReportStats().getRecordingSizeBytes());
                 evt.setRulesEvaluated(reportFuture.get().getReportStats().getRulesEvaluated());
                 evt.setRulesApplicable(reportFuture.get().getReportStats().getRulesApplicable());
                 return reportFuture.get(timeout - elapsed, TimeUnit.NANOSECONDS).getHtml();
-            } else {
-                Gson gson = new Gson();
-                evalMapFuture = generator.generateEvalMapInterruptibly(stream, predicate);
-                ctxHelper(ctx, evalMapFuture);
-                // TODO: Add some sort of ReportStats for EvalMap/RuleEvaluation
-                evt.setRecordingSizeBytes(0);
-                evt.setRulesEvaluated(0);
-                evt.setRulesApplicable(0);
-                return gson.toJson(evalMapFuture.get(timeout - elapsed, TimeUnit.NANOSECONDS));
-            }
-        } catch (ExecutionException | InterruptedException e) {
-            throw new InternalServerErrorException(e);
-        } catch (TimeoutException e) {
-            throw new ServerErrorException(Response.Status.GATEWAY_TIMEOUT, e);
-        } finally {
-            if (reportFuture != null) {
-                reportFuture.cancel(true);
-            }
-            if (evalMapFuture != null) {
-                evalMapFuture.cancel(true);
-            }
-            boolean deleted = fs.deleteIfExists(file);
-            if (deleted) {
-                logger.infof("Deleted %s", file);
-            } else {
-                logger.infof("Failed to delete %s", file);
-            }
-            logger.infof(
-                    "Completed request for %s after %dms",
-                    upload.fileName(), TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start));
-            evt.end();
-            if (evt.shouldCommit()) {
-                evt.commit();
+            } catch (ExecutionException | InterruptedException e) {
+                throw new InternalServerErrorException(e);
+            } catch (TimeoutException e) {
+                throw new ServerErrorException(Response.Status.GATEWAY_TIMEOUT, e);
+            } finally {
+                if (reportFuture != null) {
+                    reportFuture.cancel(true);
+                }
+                boolean deleted = fs.deleteIfExists(file);
+                if (deleted) {
+                    logger.infof("Deleted %s", file);
+                } else {
+                    logger.infof("Failed to delete %s", file);
+                }
+                logger.infof(
+                        "Completed request for %s after %dms",
+                        upload.fileName(), TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start));
+                evt.end();
+                if (evt.shouldCommit()) {
+                    evt.commit();
+                }
             }
         }
-    }
+        @POST 
+        @Produces(MediaType.APPLICATION_JSON)
+        public String getEval(RoutingContext ctx, @MultipartForm RecordingFormData form) throws IOException {
+                        FileUpload upload = form.file;
+            String filter = form.filter;
 
+            java.nio.file.Path file = upload.uploadedFile();
+            long timeout = TimeUnit.MILLISECONDS.toNanos(Long.parseLong(timeoutMs));
+            long start = System.nanoTime();
+            long now = start;
+            long elapsed = 0;
+            ReportGenerationEvent evt = new ReportGenerationEvent(upload.fileName());
+
+            logger.infof("Received request for %s (%d bytes)", upload.fileName(), upload.size());
+            evt.begin();
+
+            if (IOToolkit.isCompressedFile(file.toFile())) {
+                file = decompress(file);
+                now = System.nanoTime();
+                elapsed = now - start;
+                logger.infof(
+                        "%s was compressed. Decompressed size: %d bytes. Decompression took %dms",
+                        upload.fileName(),
+                        file.toFile().length(),
+                        TimeUnit.NANOSECONDS.toMillis(elapsed));
+            }
+
+            Runtime runtime = Runtime.getRuntime();
+            System.gc();
+            long availableMemory = runtime.maxMemory() - runtime.totalMemory() + runtime.freeMemory();
+            long maxHandleableSize = availableMemory / Long.parseLong(memoryFactor);
+            if (file.toFile().length() > maxHandleableSize) {
+                throw new ClientErrorException(Response.Status.REQUEST_ENTITY_TOO_LARGE);
+            }
+
+            now = System.nanoTime();
+            elapsed = now - start;
+            if (elapsed > timeout) {
+                throw new ServerErrorException(Response.Status.GATEWAY_TIMEOUT);
+            }
+
+            Predicate<IRule> predicate = getPredicateRuleFilter(filter);
+            Future<Map<String, RuleEvaluation>> evalMapFuture = null;
+
+            try (var stream = fs.newInputStream(file)) {
+                    ObjectMapper oMapper = new ObjectMapper();
+                    evalMapFuture = generator.generateEvalMapInterruptibly(stream, predicate);
+                    ctxHelper(ctx, evalMapFuture);
+                    // TODO: Add some sort of ReportStats for EvalMap/RuleEvaluation
+                    evt.setRecordingSizeBytes(0);
+                    evt.setRulesEvaluated(0);
+                    evt.setRulesApplicable(0);
+                    return oMapper.writeValueAsString(evalMapFuture.get(timeout - elapsed, TimeUnit.NANOSECONDS));
+            } catch (ExecutionException | InterruptedException e) {
+                throw new InternalServerErrorException(e);
+            } catch (TimeoutException e) {
+                throw new ServerErrorException(Response.Status.GATEWAY_TIMEOUT, e);
+            } finally {
+                if (evalMapFuture != null) {
+                    evalMapFuture.cancel(true);
+                }
+                boolean deleted = fs.deleteIfExists(file);
+                if (deleted) {
+                    logger.infof("Deleted %s", file);
+                } else {
+                    logger.infof("Failed to delete %s", file);
+                }
+                logger.infof(
+                        "Completed request for %s after %dms",
+                        upload.fileName(), TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start));
+                evt.end();
+                if (evt.shouldCommit()) {
+                    evt.commit();
+                }
+            }
+        }
+
+    //     private List<Object> reportHelper(RoutingContext ctx, @MultipartForm RecordingFormData form) throws IOException {
+    //         FileUpload upload = form.file;
+    //         java.nio.file.Path file = upload.uploadedFile();
+    //         long timeout = TimeUnit.MILLISECONDS.toNanos(Long.parseLong(timeoutMs));
+    //         long start = System.nanoTime();
+    //         long now = start;
+    //         long elapsed = 0;
+    //         ReportGenerationEvent evt = new ReportGenerationEvent(upload.fileName());
+
+    //         logger.infof("Received request for %s (%d bytes)", upload.fileName(), upload.size());
+    //         evt.begin();
+
+    //         if (IOToolkit.isCompressedFile(file.toFile())) {
+    //             file = decompress(file);
+    //             now = System.nanoTime();
+    //             elapsed = now - start;
+    //             logger.infof(
+    //                     "%s was compressed. Decompressed size: %d bytes. Decompression took %dms",
+    //                     upload.fileName(),
+    //                     file.toFile().length(),
+    //                     TimeUnit.NANOSECONDS.toMillis(elapsed));
+    //         }
+
+    //         Runtime runtime = Runtime.getRuntime();
+    //         System.gc();
+    //         long availableMemory = runtime.maxMemory() - runtime.totalMemory() + runtime.freeMemory();
+    //         long maxHandleableSize = availableMemory / Long.parseLong(memoryFactor);
+    //         if (file.toFile().length() > maxHandleableSize) {
+    //             throw new ClientErrorException(Response.Status.REQUEST_ENTITY_TOO_LARGE);
+    //         }
+
+    //         now = System.nanoTime();
+    //         elapsed = now - start;
+    //         if (elapsed > timeout) {
+    //             throw new ServerErrorException(Response.Status.GATEWAY_TIMEOUT);
+    //         }
+
+    //         Predicate<IRule> predicate = getPredicateRuleFilter(form.filter);
+    //         return List.of(file, evt, timeout, elapsed, predicate);
+    //     }
+
+    // }
+    }
+    
     private void ctxHelper(RoutingContext ctx, Future<?> ff) {
         ctx.response()
                 .exceptionHandler(
