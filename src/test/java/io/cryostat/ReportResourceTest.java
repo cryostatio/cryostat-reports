@@ -171,10 +171,7 @@ public class ReportResourceTest {
         int numRules = RuleRegistry.getRules().size();
 
         MatcherAssert.assertThat(map, Matchers.notNullValue());
-        MatcherAssert.assertThat(
-                String.format("Expect {%d} rules", numRules),
-                map.size(),
-                Matchers.equalTo(numRules));
+        MatcherAssert.assertThat(map, Matchers.aMapWithSize(numRules));
         for (var e : map.entrySet()) {
             MatcherAssert.assertThat(e, Matchers.notNullValue());
             MatcherAssert.assertThat(e.getValue(), Matchers.notNullValue());
@@ -184,7 +181,14 @@ public class ReportResourceTest {
                     e.getValue().getName(), Matchers.not(Matchers.emptyOrNullString()));
             MatcherAssert.assertThat(
                     e.getValue().getTopic(), Matchers.not(Matchers.emptyOrNullString()));
-            MatcherAssert.assertThat(e.getValue().getScore(), Matchers.not(Matchers.notANumber()));
+            MatcherAssert.assertThat(
+                    e.getValue().getScore(),
+                    Matchers.anyOf(
+                            Matchers.equalTo(-1d),
+                            Matchers.equalTo(-2d),
+                            Matchers.equalTo(-3d),
+                            Matchers.both(Matchers.lessThanOrEqualTo(100d))
+                                    .and(Matchers.greaterThanOrEqualTo(0d))));
         }
     }
 
