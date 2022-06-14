@@ -14,8 +14,4 @@ public class RecordingFormData {
     @RestForm
     @PartType(MediaType.TEXT_PLAIN)
     public String filter;
-
-    @RestForm
-    @PartType(MediaType.TEXT_PLAIN)
-    public String eval;
 }
