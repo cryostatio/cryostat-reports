@@ -58,7 +58,7 @@ public class ReportResource {
     @Inject Logger logger;
     @Inject InterruptibleReportGenerator generator;
     @Inject FileSystem fs;
-    
+
     RuleFilterParser rfp = new RuleFilterParser();
 
     void onStart(@Observes StartupEvent ev) {
