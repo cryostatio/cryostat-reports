@@ -4,13 +4,11 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Predicate;
-import java.util.stream.Collectors;
 
 import javax.enterprise.event.Observes;
 import javax.inject.Inject;
@@ -30,12 +28,12 @@ import io.cryostat.core.reports.InterruptibleReportGenerator.ReportGenerationEve
 import io.cryostat.core.reports.InterruptibleReportGenerator.ReportResult;
 import io.cryostat.core.reports.InterruptibleReportGenerator.RuleEvaluation;
 import io.cryostat.core.sys.FileSystem;
+import io.cryostat.core.util.RuleFilterParser;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.quarkus.runtime.StartupEvent;
 import io.smallrye.common.annotation.Blocking;
 import io.vertx.ext.web.RoutingContext;
-import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.Pair;
 import org.apache.commons.lang3.tuple.Triple;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
@@ -44,18 +42,9 @@ import org.jboss.resteasy.reactive.MultipartForm;
 import org.jboss.resteasy.reactive.multipart.FileUpload;
 import org.openjdk.jmc.common.io.IOToolkit;
 import org.openjdk.jmc.flightrecorder.rules.IRule;
-import org.openjdk.jmc.flightrecorder.rules.RuleRegistry;
 
 @Path("/")
 public class ReportResource {
-
-    private static final Set<String> RULE_IDS_SET =
-            RuleRegistry.getRules().stream().map(rule -> rule.getId()).collect(Collectors.toSet());
-
-    private static final Set<String> TOPIC_IDS_SET =
-            RuleRegistry.getRules().stream()
-                    .map(rule -> rule.getTopic())
-                    .collect(Collectors.toSet());
 
     private static final String SINGLETHREAD_PROPERTY =
             "org.openjdk.jmc.flightrecorder.parser.singlethreaded";
@@ -69,6 +58,8 @@ public class ReportResource {
     @Inject Logger logger;
     @Inject InterruptibleReportGenerator generator;
     @Inject FileSystem fs;
+    
+    RuleFilterParser rfp = new RuleFilterParser();
 
     void onStart(@Observes StartupEvent ev) {
         logger.infof(
@@ -102,7 +93,7 @@ public class ReportResource {
         long start = tripleHelper.getRight().getLeft();
         long elapsed = tripleHelper.getRight().getRight();
 
-        Predicate<IRule> predicate = getPredicateRuleFilter(form.filter);
+        Predicate<IRule> predicate = rfp.parse(form.filter);
         Future<ReportResult> reportFuture = null;
 
         try (var stream = fs.newInputStream(file)) {
@@ -138,7 +129,7 @@ public class ReportResource {
         long start = tripleHelper.getRight().getLeft();
         long elapsed = tripleHelper.getRight().getRight();
 
-        Predicate<IRule> predicate = getPredicateRuleFilter(form.filter);
+        Predicate<IRule> predicate = rfp.parse(form.filter);
         Future<Map<String, RuleEvaluation>> evalMapFuture = null;
 
         ObjectMapper oMapper = new ObjectMapper();
@@ -237,26 +228,6 @@ public class ReportResource {
         evt.end();
         if (evt.shouldCommit()) {
             evt.commit();
-        }
-    }
-
-    // TODO: Refactor this as a util function into cryostat-core
-    public static Predicate<IRule> getPredicateRuleFilter(String rawFilter) {
-        if (StringUtils.isNotBlank(rawFilter)) {
-            String[] filterArray = rawFilter.split(",");
-            Predicate<IRule> combinedPredicate = (r) -> false;
-            for (String filter : filterArray) {
-                if (RULE_IDS_SET.contains(filter)) {
-                    Predicate<IRule> pr = (rule) -> rule.getId().equalsIgnoreCase(filter.trim());
-                    combinedPredicate = combinedPredicate.or(pr);
-                } else if (TOPIC_IDS_SET.contains(filter)) {
-                    Predicate<IRule> pr = (rule) -> rule.getTopic().equalsIgnoreCase(filter.trim());
-                    combinedPredicate = combinedPredicate.or(pr);
-                }
-            }
-            return combinedPredicate;
-        } else {
-            return (r) -> true;
         }
     }
 
