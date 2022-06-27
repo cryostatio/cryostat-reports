@@ -9,7 +9,6 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Predicate;
-import java.util.stream.Collectors;
 
 import javax.enterprise.event.Observes;
 import javax.inject.Inject;
@@ -157,10 +156,10 @@ public class ReportResource {
         // TODO: Add some sort of ReportStats for EvalMap/RuleEvaluation (setRecordingSizeBytes)
         int rulesEvaluated = evalMap.size();
         int rulesApplicable =
-                evalMap.values().stream()
-                        .filter(result -> result.getScore() != Result.NOT_APPLICABLE)
-                        .collect(Collectors.toList())
-                        .size();
+                (int)
+                        evalMap.values().stream()
+                                .filter(result -> result.getScore() != Result.NOT_APPLICABLE)
+                                .count();
 
         return Triple.of(Long.valueOf(0), rulesEvaluated, rulesApplicable);
     }
