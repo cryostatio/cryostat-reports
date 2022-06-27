@@ -9,6 +9,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Predicate;
+import java.util.stream.Collectors;
 
 import javax.enterprise.event.Observes;
 import javax.inject.Inject;
@@ -42,6 +43,7 @@ import org.jboss.resteasy.reactive.MultipartForm;
 import org.jboss.resteasy.reactive.multipart.FileUpload;
 import org.openjdk.jmc.common.io.IOToolkit;
 import org.openjdk.jmc.flightrecorder.rules.IRule;
+import org.openjdk.jmc.flightrecorder.rules.Result;
 
 @Path("/")
 public class ReportResource {
@@ -136,10 +138,10 @@ public class ReportResource {
         try (var stream = fs.newInputStream(file)) {
             evalMapFuture = generator.generateEvalMapInterruptibly(stream, predicate);
             ctxHelper(ctx, evalMapFuture);
-            // TODO: Add some sort of ReportStats for EvalMap/RuleEvaluation
-            evt.setRecordingSizeBytes(0);
-            evt.setRulesEvaluated(0);
-            evt.setRulesApplicable(0);
+            var evalStats = getEvalStats(evalMapFuture.get());
+            evt.setRecordingSizeBytes(evalStats.getLeft());
+            evt.setRulesEvaluated(evalStats.getMiddle());
+            evt.setRulesApplicable(evalStats.getRight());
             return oMapper.writeValueAsString(
                     evalMapFuture.get(timeout - elapsed, TimeUnit.NANOSECONDS));
         } catch (ExecutionException | InterruptedException e) {
@@ -149,6 +151,18 @@ public class ReportResource {
         } finally {
             cleanupHelper(evalMapFuture, file, evt, upload.fileName(), start);
         }
+    }
+
+    private Triple<Long, Integer, Integer> getEvalStats(Map<String, RuleEvaluation> evalMap) {
+        // TODO: Add some sort of ReportStats for EvalMap/RuleEvaluation (setRecordingSizeBytes)
+        int rulesEvaluated = evalMap.size();
+        int rulesApplicable =
+                evalMap.values().stream()
+                        .filter(result -> result.getScore() != Result.NOT_APPLICABLE)
+                        .collect(Collectors.toList())
+                        .size();
+
+        return Triple.of(Long.valueOf(0), rulesEvaluated, rulesApplicable);
     }
 
     private Triple<java.nio.file.Path, ReportGenerationEvent, Pair<Long, Long>> reportHelper(
