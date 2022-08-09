@@ -1,4 +1,4 @@
-# cryostat-reports Project
+# cryostat-reports
 
 This project uses Quarkus, the Supersonic Subatomic Java Framework.
 
