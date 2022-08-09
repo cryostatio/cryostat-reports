@@ -38,8 +38,10 @@ and loaded into your local `podman` image registry.
 
 If a Quarkus build failure is encountered due to being unable to build a Docker image, then:
 ```shell script
-sudo install podman-docker
+sudo dnf install podman-docker
 ```
+
+**Note**: If `docker` is already installed, then starting `docker` will solve the issue.
 
 ## Creating a native executable
 
