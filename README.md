@@ -23,6 +23,25 @@ You can run your application in dev mode that enables live coding using:
 
 ## Packaging and running the application
 
+The [`cryostat-agent`](https://github.com/cryostatio/cryostast-agent) JAR dependency will be downloaded from an
+authenticated repository by default. Add or merge the following configuration into your `$HOME/.m2/settings.xml`,
+creating the file if it does not exist:
+
+```xml
+<settings xmlns="http://maven.apache.org/SETTINGS/1.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0 https://maven.apache.org/xsd/settings-1.0.0.xsd">
+  <servers>
+    <server>
+      <id>github</id>
+      <username>$MY_GITHUB_USERNAME</username>
+      <password>$MY_GITHUB_ACCESSTOKEN</password>
+    </server>
+  </servers>
+</settings>
+```
+
+The token must have the `read:packages` permission. It is recommended that this is the *only* permission the token has.
+
 The application can be packaged using:
 ```shell script
 ./mvnw package
