@@ -36,10 +36,6 @@ jobs:
     - uses: skjolber/maven-cache-github-action@v1
       with:
         step: restore
-    - uses: actions/download-artifact@v2
-      with:
-        name: cryostat-core
-        path: /home/runner/.m2/repository/io/cryostat/cryostat-core/
     - run: mvn -B -U clean verify
       env:
         GITHUB_TOKEN_REF: ${{ secrets.GH_PKGS_READ_TOKEN }}
