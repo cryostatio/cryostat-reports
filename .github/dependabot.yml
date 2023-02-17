@@ -3,7 +3,8 @@ registries:
   maven-github:
     type: maven-repository
     url: https://maven.pkg.github.com/cryostatio/cryostat-core
-    token: ${{secrets.DEPENDABOT_READ_GHCR}}
+    username: dummy
+    password: ${{secrets.DEPENDABOT_READ_GHCR}}
 updates:
   - package-ecosystem: "maven"
     directory: "/"
