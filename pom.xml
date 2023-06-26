@@ -21,11 +21,19 @@
     <quarkus.platform.artifact-id>quarkus-bom</quarkus.platform.artifact-id>
     <quarkus.platform.group-id>io.quarkus.platform</quarkus.platform.group-id>
     <quarkus.platform.version>2.13.7.Final</quarkus.platform.version>
+<<<<<<< HEAD
     <surefire-plugin.version>3.0.0</surefire-plugin.version>
     <assembly-plugin.version>3.5.0</assembly-plugin.version>
     <com.diffplug.spotless.maven.plugin.version>2.36.0</com.diffplug.spotless.maven.plugin.version>
     <org.codehaus.mojo.build.helper.plugin.version>3.3.0</org.codehaus.mojo.build.helper.plugin.version>
     <io.cryostat.core.version>2.21.0</io.cryostat.core.version>
+=======
+    <surefire-plugin.version>3.1.2</surefire-plugin.version>
+    <assembly-plugin.version>3.6.0</assembly-plugin.version>
+    <com.diffplug.spotless.maven.plugin.version>2.37.0</com.diffplug.spotless.maven.plugin.version>
+    <org.codehaus.mojo.build.helper.plugin.version>3.4.0</org.codehaus.mojo.build.helper.plugin.version>
+    <io.cryostat.core.version>2.21.1</io.cryostat.core.version>
+>>>>>>> 6505909 (build(deps): bump cryostat-core from 2.21.0 to 2.21.1 (#120))
     <org.jsoup.version>1.15.4</org.jsoup.version>
     <com.mycila.license.maven.plugin.version>4.2</com.mycila.license.maven.plugin.version>
   </properties>
