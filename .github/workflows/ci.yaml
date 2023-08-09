@@ -48,7 +48,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [get-pom-properties]
     env:
-      CRYOSTAT_REPORTS_IMG: quay.io/cryostat/cryostat-reports
+      CRYOSTAT_REPORTS_IMG: quay.io/andrewazores/cryostat-reports
     steps:
     - uses: actions/checkout@v2
       with:
@@ -67,36 +67,68 @@ jobs:
     - uses: skjolber/maven-cache-github-action@v1
       with:
         step: restore
-    - run: mvn -B -U clean verify
+    - name: Build image (amd64)
+      run: ./mvnw -Dquarkus.docker.executable-name=docker -Dquarkus.docker.buildx.platform=linux/amd64 -Dquarkus.container-image.group=andrewazores -Dquarkus.container-image.tag=$IMAGE_VERSION-linux-amd64 -B -U clean verify
       env:
+        IMAGE_VERSION: ${{ needs.get-pom-properties.outputs.image-version }}
         GITHUB_TOKEN_REF: ${{ secrets.GH_PKGS_READ_TOKEN }}
-    - name: Tag images
-      id: tag-image
+    - name: Push amd64 to quay.io
+      id: push-amd64-to-quay
+      uses: redhat-actions/push-to-registry@v2
+      env:
+        IMAGE_VERSION: ${{ needs.get-pom-properties.outputs.image-version }}
+      with:
+        tags: quay.io/andrewazores/cryostat-reports:${{ env.IMAGE_VERSION }}-linux-amd64
+        username: andrewazores+github_ci
+        password: ${{ secrets.REGISTRY_PASSWORD }}
+      # if: ${{ github.event_name == 'push' && github.repository_owner == 'cryostatio' }}
+    - name: Build image (arm64)
+      run: ./mvnw -Dquarkus.docker.executable-name=docker -Dquarkus.docker.buildx.platform=linux/arm64 -Dquarkus.container-image.group=andrewazores -Dquarkus.container-image.tag=$IMAGE_VERSION-linux-arm64 -B -U clean verify
+      env:
+        IMAGE_VERSION: ${{ needs.get-pom-properties.outputs.image-version }}
+        GITHUB_TOKEN_REF: ${{ secrets.GH_PKGS_READ_TOKEN }}
+    - name: Push arm64 to quay.io
+      id: push-arm64-to-quay
+      uses: redhat-actions/push-to-registry@v2
+      env:
+        IMAGE_VERSION: ${{ needs.get-pom-properties.outputs.image-version }}
+      with:
+        tags: quay.io/andrewazores/cryostat-reports:${{ env.IMAGE_VERSION }}-linux-arm64
+        username: andrewazores+github_ci
+        password: ${{ secrets.REGISTRY_PASSWORD }}
+      # if: ${{ github.event_name == 'push' && github.repository_owner == 'cryostatio' }}
+    - name: Create OCI manifest
+      id: create-manifest
       env:
         IMAGE_VERSION: ${{ needs.get-pom-properties.outputs.image-version }}
       run: |
+        docker manifest create $CRYOSTAT_REPORTS_IMG:$IMAGE_VERSION $CRYOSTAT_REPORTS_IMG:$IMAGE_VERSION-linux-amd64 $CRYOSTAT_REPORTS_IMG:$IMAGE_VERSION-linux-arm64
         if [ "$GITHUB_REF" == "refs/heads/main" ]; then
-          podman tag \
-          ${{ env.CRYOSTAT_REPORTS_IMG }}:$IMAGE_VERSION \
-          ${{ env.CRYOSTAT_REPORTS_IMG }}:latest
-          echo "::set-output name=tags::$IMAGE_VERSION latest"
+          docker manifest create $CRYOSTAT_REPORTS_IMG:latest $CRYOSTAT_REPORTS_IMG:$IMAGE_VERSION-linux-amd64 $CRYOSTAT_REPORTS_IMG:$IMAGE_VERSION-linux-arm64
+          echo "::set-output name=tags::quay.io/andrewazores/cryostat-reports:$IMAGE_VERSION quay.io/andrewazores/cryostat-reports:latest"
         else
-          echo "::set-output name=tags::$IMAGE_VERSION"
+          echo "::set-output name=tags::quay.io/andrewazores/cryostat-reports:$IMAGE_VERSION"
         fi
-      if: ${{ github.event_name == 'push' && github.repository_owner == 'cryostatio' }}
+      # if: ${{ github.event_name == 'push' && github.repository_owner == 'cryostatio' }}
     - uses: skjolber/maven-cache-github-action@v1
       with:
         step: save
+    - name: Log in to quay.io
+      id: quay-login
+      run: docker login --username andrewazores+github_ci --password ${{ secrets.REGISTRY_PASSWORD }} quay.io
     - name: Push to quay.io
-      id: push-to-quay
-      uses: redhat-actions/push-to-registry@v2
-      with:
-        image: cryostat-reports
-        tags: ${{ steps.tag-image.outputs.tags }}
-        registry: quay.io/cryostat
-        username: cryostat+bot
-        password: ${{ secrets.REGISTRY_PASSWORD }}
-      if: ${{ github.event_name == 'push' && github.repository_owner == 'cryostatio' }}
+      id: push-manifest-to-quay
+      env:
+        IMAGE_VERSION: ${{ needs.get-pom-properties.outputs.image-version }}
+      run: |
+        docker manifest push quay.io/andrewazores/cryostat-reports:latest
+        docker manifest push quay.io/andrewazores/cryostat-reports:$IMAGE_VERSION
+      # uses: redhat-actions/push-to-registry@v2
+      # with:
+      #   tags: ${{ steps.create-manifest.outputs.tags }}
+      #   username: andrewazores+github_ci
+      #   password: ${{ secrets.REGISTRY_PASSWORD }}
+      # if: ${{ github.event_name == 'push' && github.repository_owner == 'cryostatio' }}
     - name: Print image URL
       run: echo "Image pushed to ${{ steps.push-to-quay.outputs.registry-paths }}"
-      if: ${{ github.event_name == 'push' && github.repository_owner == 'cryostatio' }}
+      # if: ${{ github.event_name == 'push' && github.repository_owner == 'cryostatio' }}
