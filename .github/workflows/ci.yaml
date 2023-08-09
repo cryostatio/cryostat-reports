@@ -85,12 +85,13 @@ jobs:
         tags: latest ${{ env.IMAGE_VERSION }}
         containerfiles: |
           ./src/main/docker/Dockerfile.jvm
-    - uses: redhat-actions/push-to-registry@v2
+    - name: Push to quay.io
       id: push-to-quay
+      uses: redhat-actions/push-to-registry@v2
       with:
-        registry: quay.io/cryostat
         image: cryostat-reports
         tags: ${{ steps.buildah-build.outputs.tags }}
+        registry: quay.io/cryostat
         username: cryostat+bot
         password: ${{ secrets.REGISTRY_PASSWORD }}
       if: ${{ github.event_name == 'push' && github.repository_owner == 'cryostatio' }}
