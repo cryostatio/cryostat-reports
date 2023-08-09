@@ -81,7 +81,8 @@ jobs:
         IMAGE_VERSION: ${{ needs.get-pom-properties.outputs.image-version }}
       with:
         image: ${{ env.CRYOSTAT_REPORTS_IMG }}
-        tags: latest ${{ env.IMAGE_VERSION }} ${{ github.sha }}
+        archs: amd64, arm64
+        tags: latest ${{ env.IMAGE_VERSION }}
         containerfiles: |
           ./src/main/docker/Dockerfile.jvm
     - uses: redhat-actions/push-to-registry@v2
