@@ -96,11 +96,11 @@ public class ReportResource {
             throws IOException {
         FileUpload upload = form.file;
 
-        Pair<java.nio.file.Path, Pair<Long, Long>> tripleHelper = reportHelper(upload);
-        java.nio.file.Path file = tripleHelper.getLeft();
+        Pair<java.nio.file.Path, Pair<Long, Long>> uploadResult = handleUpload(upload);
+        java.nio.file.Path file = uploadResult.getLeft();
         long timeout = TimeUnit.MILLISECONDS.toNanos(Long.parseLong(timeoutMs));
-        long start = tripleHelper.getRight().getLeft();
-        long elapsed = tripleHelper.getRight().getRight();
+        long start = uploadResult.getRight().getLeft();
+        long elapsed = uploadResult.getRight().getRight();
 
         Predicate<IRule> predicate = rfp.parse(form.filter);
         Future<Map<String, AnalysisResult>> evalMapFuture = null;
@@ -120,7 +120,7 @@ public class ReportResource {
         }
     }
 
-    private Pair<java.nio.file.Path, Pair<Long, Long>> reportHelper(FileUpload upload)
+    private Pair<java.nio.file.Path, Pair<Long, Long>> handleUpload(FileUpload upload)
             throws IOException {
         java.nio.file.Path file = upload.uploadedFile();
         long timeout = TimeUnit.MILLISECONDS.toNanos(Long.parseLong(timeoutMs));
