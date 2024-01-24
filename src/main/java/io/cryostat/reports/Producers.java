@@ -15,6 +15,7 @@
  */
 package io.cryostat.reports;
 
+import java.util.concurrent.Executors;
 import java.util.concurrent.ForkJoinPool;
 
 import io.cryostat.core.reports.InterruptibleReportGenerator;
@@ -28,7 +29,11 @@ public class Producers {
     @Produces
     @ApplicationScoped
     InterruptibleReportGenerator produceReportGenerator() {
-        return new InterruptibleReportGenerator(ForkJoinPool.commonPool());
+        boolean singleThread =
+                Runtime.getRuntime().availableProcessors() < 2
+                        || Boolean.getBoolean(ReportResource.SINGLETHREAD_PROPERTY);
+        return new InterruptibleReportGenerator(
+                singleThread ? Executors.newSingleThreadExecutor() : ForkJoinPool.commonPool());
     }
 
     @Produces

@@ -57,7 +57,7 @@ import org.openjdk.jmc.flightrecorder.rules.IRule;
 @Path("/")
 public class ReportResource {
 
-    private static final String SINGLETHREAD_PROPERTY =
+    static final String SINGLETHREAD_PROPERTY =
             "org.openjdk.jmc.flightrecorder.parser.singlethreaded";
 
     @ConfigProperty(name = "io.cryostat.reports.memory-factor", defaultValue = "10")
