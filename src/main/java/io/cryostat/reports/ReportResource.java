@@ -15,15 +15,12 @@
  */
 package io.cryostat.reports;
 
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.net.HttpURLConnection;
 import java.net.URI;
 import java.net.URISyntaxException;
-import java.nio.channels.Channels;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
-import java.time.Duration;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ExecutionException;
@@ -112,55 +109,39 @@ public class ReportResource {
     @POST
     public String getReportFromPresigned(RoutingContext ctx, @BeanParam PresignedFormData form)
             throws IOException, URISyntaxException {
-        try {
-            long timeout = TimeUnit.MILLISECONDS.toNanos(Long.parseLong(timeoutMs));
-            long start = System.nanoTime();
+        long timeout = TimeUnit.MILLISECONDS.toNanos(Long.parseLong(timeoutMs));
+        long start = System.nanoTime();
 
-            var file = Files.createTempFile(null, null);
-
-            UriBuilder uriBuilder =
-                    UriBuilder.newInstance()
-                            .uri(new URI(storageBase.get()))
-                            .path(form.path)
-                            .replaceQuery(form.query);
-            URI downloadUri = uriBuilder.build();
-            logger.infov("Attempting to download presigned recording from {0}", downloadUri);
-            HttpURLConnection httpConn = (HttpURLConnection) downloadUri.toURL().openConnection();
-            httpConn.setRequestMethod("GET");
-            if (storageAuth.isPresent() && storageAuth.isPresent()) {
-                httpConn.setRequestProperty(
-                        "Authorization",
-                        String.format("%s %s", storageAuthMethod.get(), storageAuth.get()));
-            }
-            try (var stream = httpConn.getInputStream();
-                    var downloadChannel = Channels.newChannel(stream);
-                    var fos = new FileOutputStream(file.toFile());
-                    var fileChannel = fos.getChannel(); ) {
-                fileChannel.transferFrom(downloadChannel, 0, Long.MAX_VALUE);
-            } finally {
-                httpConn.disconnect();
-            }
-            long elapsed = System.nanoTime() - start;
-            logger.infov("Downloaded {0} in {1}", downloadUri, Duration.ofNanos(elapsed));
+        UriBuilder uriBuilder =
+                UriBuilder.newInstance()
+                        .uri(new URI(storageBase.get()))
+                        .path(form.path)
+                        .replaceQuery(form.query);
+        URI downloadUri = uriBuilder.build();
+        logger.infov("Attempting to download presigned recording from {0}", downloadUri);
+        HttpURLConnection httpConn = (HttpURLConnection) downloadUri.toURL().openConnection();
+        httpConn.setRequestMethod("GET");
+        if (storageAuth.isPresent() && storageAuth.isPresent()) {
+            httpConn.setRequestProperty(
+                    "Authorization",
+                    String.format("%s %s", storageAuthMethod.get(), storageAuth.get()));
+        }
+        try (var stream = httpConn.getInputStream()) {
 
             Predicate<IRule> predicate = rfp.parse(form.filter);
             Future<Map<String, AnalysisResult>> evalMapFuture = null;
 
-            try (var stream = fs.newInputStream(file)) {
-                evalMapFuture = generator.generateEvalMapInterruptibly(stream, predicate);
-                ctxHelper(ctx, evalMapFuture);
-                return mapper.writeValueAsString(
-                        evalMapFuture.get(timeout - elapsed, TimeUnit.NANOSECONDS));
-            } catch (ExecutionException | InterruptedException e) {
-                throw new InternalServerErrorException(e);
-            } catch (TimeoutException e) {
-                throw new ServerErrorException(Response.Status.GATEWAY_TIMEOUT, e);
-            } finally {
-                cleanupHelper(evalMapFuture, file, file.toFile().getName(), start);
-            }
-        } catch (Exception e) {
-            logger.error(e);
-            throw e;
+            evalMapFuture = generator.generateEvalMapInterruptibly(stream, predicate);
+            long elapsed = System.nanoTime() - start;
+            ctxHelper(ctx, evalMapFuture);
+            return mapper.writeValueAsString(
+                    evalMapFuture.get(timeout - elapsed, TimeUnit.NANOSECONDS));
+        } catch (ExecutionException | InterruptedException e) {
+            throw new InternalServerErrorException(e);
+        } catch (TimeoutException e) {
+            throw new ServerErrorException(Response.Status.GATEWAY_TIMEOUT, e);
+        } finally {
+            httpConn.disconnect();
         }
     }
 
