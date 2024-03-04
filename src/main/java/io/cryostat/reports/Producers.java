@@ -15,20 +15,28 @@
  */
 package io.cryostat.reports;
 
+import java.util.concurrent.Executors;
 import java.util.concurrent.ForkJoinPool;
 
 import io.cryostat.core.reports.InterruptibleReportGenerator;
 import io.cryostat.core.sys.FileSystem;
 
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.enterprise.context.RequestScoped;
 import jakarta.ws.rs.Produces;
 
 public class Producers {
 
     @Produces
-    @ApplicationScoped
+    // RequestScoped so that each individual report generation request has its own interruptible
+    // generator with an independent task queueing thread which dispatches to the shared common pool
+    @RequestScoped
     InterruptibleReportGenerator produceReportGenerator() {
-        return new InterruptibleReportGenerator(ForkJoinPool.commonPool());
+        boolean singleThread =
+                Runtime.getRuntime().availableProcessors() < 2
+                        || Boolean.getBoolean(ReportResource.SINGLETHREAD_PROPERTY);
+        return new InterruptibleReportGenerator(
+                singleThread ? Executors.newSingleThreadExecutor() : ForkJoinPool.commonPool());
     }
 
     @Produces
