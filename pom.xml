@@ -38,7 +38,7 @@
     <assembly-plugin.version>3.7.1</assembly-plugin.version>
     <com.diffplug.spotless.maven.plugin.version>2.43.0</com.diffplug.spotless.maven.plugin.version>
     <org.codehaus.mojo.build.helper.plugin.version>3.6.0</org.codehaus.mojo.build.helper.plugin.version>
-    <io.cryostat.core.version>3.0.0-SNAPSHOT</io.cryostat.core.version>
+    <io.cryostat.core.version>4.0.0-SNAPSHOT</io.cryostat.core.version>
     <org.openjdk.jmc.version>9.0.0</org.openjdk.jmc.version>
     <com.mycila.license.maven.plugin.version>4.5</com.mycila.license.maven.plugin.version>
     <!-- TODO Remove if Quarkus updates Netty in 3.2 -->
