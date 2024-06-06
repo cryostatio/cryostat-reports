@@ -42,7 +42,7 @@
     <org.openjdk.jmc.version>9.0.0</org.openjdk.jmc.version>
     <com.mycila.license.maven.plugin.version>4.5</com.mycila.license.maven.plugin.version>
     <!-- TODO Remove if Quarkus updates Netty in 3.2 -->
-    <io.netty.version>4.1.108.Final</io.netty.version>
+    <io.netty.version>4.1.110.Final</io.netty.version>
   </properties>
   <dependencyManagement>
     <dependencies>
