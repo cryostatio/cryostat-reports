@@ -19,7 +19,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ForkJoinPool;
 
 import io.cryostat.core.reports.InterruptibleReportGenerator;
-import io.cryostat.core.sys.FileSystem;
+import io.cryostat.libcryostat.sys.FileSystem;
 
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.context.RequestScoped;

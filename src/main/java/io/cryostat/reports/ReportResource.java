@@ -27,8 +27,8 @@ import java.util.function.Predicate;
 
 import io.cryostat.core.reports.InterruptibleReportGenerator;
 import io.cryostat.core.reports.InterruptibleReportGenerator.AnalysisResult;
-import io.cryostat.core.sys.FileSystem;
 import io.cryostat.core.util.RuleFilterParser;
+import io.cryostat.libcryostat.sys.FileSystem;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.quarkus.runtime.StartupEvent;
