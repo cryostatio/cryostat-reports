@@ -33,26 +33,17 @@
     <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
     <quarkus.platform.artifact-id>quarkus-bom</quarkus.platform.artifact-id>
     <quarkus.platform.group-id>io.quarkus.platform</quarkus.platform.group-id>
-    <quarkus.platform.version>3.2.12.Final</quarkus.platform.version>
-    <surefire-plugin.version>3.2.5</surefire-plugin.version>
+    <quarkus.platform.version>3.8.5</quarkus.platform.version>
+    <surefire-plugin.version>3.4.0</surefire-plugin.version>
     <assembly-plugin.version>3.7.1</assembly-plugin.version>
     <com.diffplug.spotless.maven.plugin.version>2.43.0</com.diffplug.spotless.maven.plugin.version>
     <org.codehaus.mojo.build.helper.plugin.version>3.6.0</org.codehaus.mojo.build.helper.plugin.version>
     <io.cryostat.core.version>3.0.2-SNAPSHOT</io.cryostat.core.version>
     <org.openjdk.jmc.version>9.0.0</org.openjdk.jmc.version>
     <com.mycila.license.maven.plugin.version>4.5</com.mycila.license.maven.plugin.version>
-    <!-- TODO Remove if Quarkus updates Netty in 3.2 -->
-    <io.netty.version>4.1.108.Final</io.netty.version>
   </properties>
   <dependencyManagement>
     <dependencies>
-      <dependency>
-        <groupId>io.netty</groupId>
-        <artifactId>netty-bom</artifactId>
-        <version>${io.netty.version}</version>
-        <type>pom</type>
-        <scope>import</scope>
-      </dependency>
       <dependency>
         <groupId>${quarkus.platform.group-id}</groupId>
         <artifactId>${quarkus.platform.artifact-id}</artifactId>
