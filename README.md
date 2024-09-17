@@ -65,7 +65,7 @@ https://www.graalvm.org/reference-manual/native-image/Agent/
 In short, download the GraalVM CE distribution. Then do:
 ```bash
 # replace with actual path to downloaded and extracted GraalVM
-export JAVA_HOME=~/workspace/graalvm-ce-java17-21.3/
+export JAVA_HOME=~/workspace/graalvm-ce-java21-21.0.2/
 # run the application JAR with the tracing agent attached. This is a JVM-mode JAR!
 $JAVA_HOME/bin/java -agentlib:native-image-agent=config-output-dir=graal-config -jar target/cryostat-reports-*-runner.jar
 # in another terminal, make a request to exercise the expected microservice code path. Some "fully-featured"
