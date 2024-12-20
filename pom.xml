@@ -1,6 +1,5 @@
-<?xml version="1.0"?>
-<project xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd" xmlns="http://maven.apache.org/POM/4.0.0"
-    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
   <groupId>io.cryostat</groupId>
   <artifactId>cryostat-reports</artifactId>
@@ -13,7 +12,6 @@
         <enabled>false</enabled>
       </releases>
       <snapshots>
-        <enabled>true</enabled>
         <updatePolicy>always</updatePolicy>
       </snapshots>
     </repository>
@@ -77,6 +75,10 @@
       <version>${io.cryostat.core.version}</version>
     </dependency>
 
+    <dependency>
+      <groupId>io.quarkus</groupId>
+      <artifactId>quarkus-jfr</artifactId>
+    </dependency>
     <dependency>
       <groupId>io.quarkus</groupId>
       <artifactId>quarkus-junit5</artifactId>
@@ -162,12 +164,12 @@
               <style>AOSP</style>
               <reflowLongStrings>true</reflowLongStrings>
             </googleJavaFormat>
-            <trimTrailingWhitespace/>
-            <endWithNewline/>
+            <trimTrailingWhitespace />
+            <endWithNewline />
             <importOrder>
               <order>java,javax,io.cryostat,</order>
             </importOrder>
-            <removeUnusedImports/>
+            <removeUnusedImports />
           </java>
         </configuration>
       </plugin>
