@@ -129,6 +129,8 @@ public class ReportResource {
                     "Authorization",
                     String.format("%s %s", storageAuthMethod.get(), storageAuth.get()));
         }
+
+        assertContentLength(httpConn.getContentLengthLong());
         try (var stream = httpConn.getInputStream()) {
 
             Predicate<IRule> predicate = rfp.parse(form.filter);
@@ -180,6 +182,19 @@ public class ReportResource {
         }
     }
 
+    private void assertContentLength(long length) {
+        if (length <= 0) {
+            return;
+        }
+        Runtime runtime = Runtime.getRuntime();
+        System.gc();
+        long availableMemory = runtime.maxMemory() - runtime.totalMemory() + runtime.freeMemory();
+        long maxHandleableSize = availableMemory / Long.parseLong(memoryFactor);
+        if (length > maxHandleableSize) {
+            throw new ClientErrorException(Response.Status.REQUEST_ENTITY_TOO_LARGE);
+        }
+    }
+
     private Pair<java.nio.file.Path, Pair<Long, Long>> handleUpload(FileUpload upload)
             throws IOException {
         java.nio.file.Path file = upload.uploadedFile();
@@ -201,13 +216,7 @@ public class ReportResource {
                     TimeUnit.NANOSECONDS.toMillis(elapsed));
         }
 
-        Runtime runtime = Runtime.getRuntime();
-        System.gc();
-        long availableMemory = runtime.maxMemory() - runtime.totalMemory() + runtime.freeMemory();
-        long maxHandleableSize = availableMemory / Long.parseLong(memoryFactor);
-        if (file.toFile().length() > maxHandleableSize) {
-            throw new ClientErrorException(Response.Status.REQUEST_ENTITY_TOO_LARGE);
-        }
+        assertContentLength(file.toFile().length());
 
         now = System.nanoTime();
         elapsed = now - start;
