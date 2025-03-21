@@ -111,6 +111,10 @@ public class ReportResource {
         long timeout = TimeUnit.MILLISECONDS.toNanos(Long.parseLong(timeoutMs));
         long start = System.nanoTime();
 
+        if (storageBase.isEmpty()) {
+            throw new ServerErrorException(Response.Status.BAD_GATEWAY);
+        }
+
         UriBuilder uriBuilder =
                 UriBuilder.newInstance()
                         .uri(new URI(storageBase.get()))
