@@ -83,9 +83,8 @@ public class ReportResource {
     @Inject InterruptibleReportGenerator generator;
     @Inject FileSystem fs;
     @Inject ObjectMapper mapper;
+    @Inject RuleFilterParser rfp;
     @Inject Logger logger;
-
-    RuleFilterParser rfp = new RuleFilterParser();
 
     void onStart(@Observes StartupEvent ev) {
         logger.infof(
