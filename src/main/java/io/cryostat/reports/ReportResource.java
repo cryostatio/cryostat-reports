@@ -108,6 +108,9 @@ public class ReportResource {
     @POST
     public String getReportFromPresigned(RoutingContext ctx, @BeanParam PresignedFormData form)
             throws IOException, URISyntaxException {
+        // TODO queue these requests so we don't overload ourselves, in particular by reading
+        // multiple JFR files into memory at once for analysis. We should process these serially
+        // from the queue.
         long timeout = TimeUnit.MILLISECONDS.toNanos(Long.parseLong(timeoutMs));
         long start = System.nanoTime();
 
