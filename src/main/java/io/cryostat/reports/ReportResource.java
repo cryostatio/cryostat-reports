@@ -110,7 +110,9 @@ public class ReportResource {
             throws IOException, URISyntaxException {
         // TODO queue these requests so we don't overload ourselves, in particular by reading
         // multiple JFR files into memory at once for analysis. We should process these serially
-        // from the queue.
+        // from the queue. If we are getting overloaded then our response time to each subsequent
+        // request will continue to grow unbounded, so at some point we should stop accepting
+        // requests when the queue is too long.
         long timeout = TimeUnit.MILLISECONDS.toNanos(Long.parseLong(timeoutMs));
         long start = System.nanoTime();
 
