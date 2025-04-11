@@ -113,6 +113,13 @@ public class ReportResource {
         // from the queue. If we are getting overloaded then our response time to each subsequent
         // request will continue to grow unbounded, so at some point we should stop accepting
         // requests when the queue is too long.
+        // Since this is a @Blocking method that runs on a worker thread pool, can we implement this
+        // serial queueing behaviour by simply synchronizing on a shared singleton resource ex. the
+        // generator instance?
+        // A better long-term solution would be to use a shared messaging queue between Cryostat and
+        // the report generators, so that Cryostat can put up a URL for a presigned recording to be
+        // processed and a free report generator can claim that work item and then post back the
+        // report response
         long timeout = TimeUnit.MILLISECONDS.toNanos(Long.parseLong(timeoutMs));
         long start = System.nanoTime();
 
