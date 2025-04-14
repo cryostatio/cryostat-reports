@@ -81,9 +81,9 @@ public class ReportResource {
     Optional<String> storageAuth;
 
     @Inject InterruptibleReportGenerator generator;
+    @Inject RuleFilterParser rfp;
     @Inject FileSystem fs;
     @Inject ObjectMapper mapper;
-    @Inject RuleFilterParser rfp;
     @Inject Logger logger;
 
     void onStart(@Observes StartupEvent ev) {
