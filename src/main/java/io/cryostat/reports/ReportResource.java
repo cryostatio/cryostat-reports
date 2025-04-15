@@ -67,6 +67,7 @@ import jakarta.ws.rs.ServerErrorException;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.UriBuilder;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.Pair;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.jboss.logging.Logger;
@@ -244,6 +245,9 @@ public class ReportResource {
         long start = uploadResult.getRight().getLeft();
         long elapsed = uploadResult.getRight().getRight();
 
+        if (StringUtils.isNotBlank(form.filter)) {
+            logger.debugv("Received request with filter: {0}", form.filter);
+        }
         Predicate<IRule> predicate = rfp.parse(form.filter);
         Future<Map<String, AnalysisResult>> evalMapFuture = null;
 
