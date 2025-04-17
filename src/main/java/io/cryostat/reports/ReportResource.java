@@ -16,9 +16,13 @@
 package io.cryostat.reports;
 
 import java.io.IOException;
+import java.net.HttpURLConnection;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
@@ -47,6 +51,7 @@ import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.ServerErrorException;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
+import jakarta.ws.rs.core.UriBuilder;
 import org.apache.commons.lang3.tuple.Pair;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.jboss.logging.Logger;
@@ -60,17 +65,26 @@ public class ReportResource {
     static final String SINGLETHREAD_PROPERTY =
             "org.openjdk.jmc.flightrecorder.parser.singlethreaded";
 
-    @ConfigProperty(name = "io.cryostat.reports.memory-factor", defaultValue = "10")
-    String memoryFactor;
+    @ConfigProperty(name = "io.cryostat.reports.memory-factor", defaultValue = "0")
+    long memoryFactor;
 
     @ConfigProperty(name = "io.cryostat.reports.timeout", defaultValue = "29000")
     String timeoutMs;
 
-    @Inject Logger logger;
+    @ConfigProperty(name = "cryostat.storage.base-uri")
+    Optional<String> storageBase;
+
+    @ConfigProperty(name = "cryostat.storage.auth-method")
+    Optional<String> storageAuthMethod;
+
+    @ConfigProperty(name = "cryostat.storage.auth")
+    Optional<String> storageAuth;
+
     @Inject InterruptibleReportGenerator generator;
     @Inject FileSystem fs;
-
-    RuleFilterParser rfp = new RuleFilterParser();
+    @Inject ObjectMapper mapper;
+    @Inject RuleFilterParser rfp;
+    @Inject Logger logger;
 
     void onStart(@Observes StartupEvent ev) {
         logger.infof(
@@ -88,11 +102,72 @@ public class ReportResource {
     public void healthCheck() {}
 
     @Blocking
+    @Path("remote_report")
+    @Produces(MediaType.APPLICATION_JSON)
+    @Consumes(MediaType.MULTIPART_FORM_DATA)
+    @POST
+    public String getReportFromPresigned(RoutingContext ctx, @BeanParam PresignedFormData form)
+            throws IOException, URISyntaxException {
+        // TODO queue these requests so we don't overload ourselves, in particular by reading
+        // multiple JFR files into memory at once for analysis. We should process these serially
+        // from the queue. If we are getting overloaded then our response time to each subsequent
+        // request will continue to grow unbounded, so at some point we should stop accepting
+        // requests when the queue is too long.
+        // Since this is a @Blocking method that runs on a worker thread pool, can we implement this
+        // serial queueing behaviour by simply synchronizing on a shared singleton resource ex. the
+        // generator instance?
+        // A better long-term solution would be to use a shared messaging queue between Cryostat and
+        // the report generators, so that Cryostat can put up a URL for a presigned recording to be
+        // processed and a free report generator can claim that work item and then post back the
+        // report response
+        long timeout = TimeUnit.MILLISECONDS.toNanos(Long.parseLong(timeoutMs));
+        long start = System.nanoTime();
+
+        if (storageBase.isEmpty()) {
+            throw new ServerErrorException(Response.Status.BAD_GATEWAY);
+        }
+
+        UriBuilder uriBuilder =
+                UriBuilder.newInstance()
+                        .uri(new URI(storageBase.get()))
+                        .path(form.path)
+                        .replaceQuery(form.query);
+        URI downloadUri = uriBuilder.build();
+        logger.infov("Attempting to download presigned recording from {0}", downloadUri);
+        HttpURLConnection httpConn = (HttpURLConnection) downloadUri.toURL().openConnection();
+        httpConn.setRequestMethod("GET");
+        if (storageAuth.isPresent() && storageAuth.isPresent()) {
+            httpConn.setRequestProperty(
+                    "Authorization",
+                    String.format("%s %s", storageAuthMethod.get(), storageAuth.get()));
+        }
+
+        assertContentLength(httpConn.getContentLengthLong());
+        try (var stream = httpConn.getInputStream()) {
+
+            Predicate<IRule> predicate = rfp.parse(form.filter);
+            Future<Map<String, AnalysisResult>> evalMapFuture = null;
+
+            evalMapFuture = generator.generateEvalMapInterruptibly(stream, predicate);
+            long elapsed = System.nanoTime() - start;
+            ctxHelper(ctx, evalMapFuture);
+            return mapper.writeValueAsString(
+                    evalMapFuture.get(timeout - elapsed, TimeUnit.NANOSECONDS));
+        } catch (ExecutionException | InterruptedException e) {
+            throw new InternalServerErrorException(e);
+        } catch (TimeoutException e) {
+            throw new ServerErrorException(Response.Status.GATEWAY_TIMEOUT, e);
+        } finally {
+            httpConn.disconnect();
+        }
+    }
+
+    @Blocking
     @Path("report")
     @Produces(MediaType.APPLICATION_JSON)
     @Consumes(MediaType.MULTIPART_FORM_DATA)
     @POST
-    public String getEval(RoutingContext ctx, @BeanParam RecordingFormData form)
+    public String getReport(RoutingContext ctx, @BeanParam RecordingFormData form)
             throws IOException {
         FileUpload upload = form.file;
 
@@ -105,11 +180,10 @@ public class ReportResource {
         Predicate<IRule> predicate = rfp.parse(form.filter);
         Future<Map<String, AnalysisResult>> evalMapFuture = null;
 
-        ObjectMapper oMapper = new ObjectMapper();
         try (var stream = fs.newInputStream(file)) {
             evalMapFuture = generator.generateEvalMapInterruptibly(stream, predicate);
             ctxHelper(ctx, evalMapFuture);
-            return oMapper.writeValueAsString(
+            return mapper.writeValueAsString(
                     evalMapFuture.get(timeout - elapsed, TimeUnit.NANOSECONDS));
         } catch (ExecutionException | InterruptedException e) {
             throw new InternalServerErrorException(e);
@@ -117,6 +191,28 @@ public class ReportResource {
             throw new ServerErrorException(Response.Status.GATEWAY_TIMEOUT, e);
         } finally {
             cleanupHelper(evalMapFuture, file, upload.fileName(), start);
+        }
+    }
+
+    private void assertContentLength(long length) {
+        if (memoryFactor <= 0) {
+            return;
+        }
+        if (length <= 0) {
+            logger.debugv("Request file has indeterminate length");
+            return;
+        }
+        logger.debugv("Request file has size {0} bytes", length);
+        Runtime runtime = Runtime.getRuntime();
+        System.gc();
+        long availableMemory = runtime.maxMemory() - runtime.totalMemory() + runtime.freeMemory();
+        long maxHandleableSize = availableMemory / memoryFactor;
+        if (length > maxHandleableSize) {
+            logger.warnv(
+                    "Rejecting request for file of {0} bytes. Estimated maximum handleable size is"
+                            + " {1} bytes.",
+                    length, maxHandleableSize);
+            throw new ClientErrorException(Response.Status.REQUEST_ENTITY_TOO_LARGE);
         }
     }
 
@@ -141,13 +237,7 @@ public class ReportResource {
                     TimeUnit.NANOSECONDS.toMillis(elapsed));
         }
 
-        Runtime runtime = Runtime.getRuntime();
-        System.gc();
-        long availableMemory = runtime.maxMemory() - runtime.totalMemory() + runtime.freeMemory();
-        long maxHandleableSize = availableMemory / Long.parseLong(memoryFactor);
-        if (file.toFile().length() > maxHandleableSize) {
-            throw new ClientErrorException(Response.Status.REQUEST_ENTITY_TOO_LARGE);
-        }
+        assertContentLength(file.toFile().length());
 
         now = System.nanoTime();
         elapsed = now - start;
