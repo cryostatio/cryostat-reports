@@ -21,6 +21,8 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
+import java.security.SecureRandom;
+import java.security.cert.X509Certificate;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ExecutionException;
@@ -28,6 +30,10 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Predicate;
+
+import javax.net.ssl.HttpsURLConnection;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.X509TrustManager;
 
 import io.cryostat.core.reports.InterruptibleReportGenerator;
 import io.cryostat.core.reports.InterruptibleReportGenerator.AnalysisResult;
@@ -79,6 +85,12 @@ public class ReportResource {
 
     @ConfigProperty(name = "cryostat.storage.auth")
     Optional<String> storageAuth;
+
+    @ConfigProperty(name = "cryostat.storage.ignore-ssl")
+    boolean storageSslIgnore;
+
+    @ConfigProperty(name = "cryostat.storage.verify-hostname")
+    boolean storageHostnameVerify;
 
     @Inject InterruptibleReportGenerator generator;
     @Inject FileSystem fs;
@@ -136,6 +148,20 @@ public class ReportResource {
         logger.infov("Attempting to download presigned recording from {0}", downloadUri);
         HttpURLConnection httpConn = (HttpURLConnection) downloadUri.toURL().openConnection();
         httpConn.setRequestMethod("GET");
+        if (httpConn instanceof HttpsURLConnection) {
+            HttpsURLConnection httpsConn = (HttpsURLConnection) httpConn;
+            if (storageSslIgnore) {
+                try {
+                    httpsConn.setSSLSocketFactory(ignoreSslContext().getSocketFactory());
+                } catch (Exception e) {
+                    logger.error(e);
+                    throw new InternalServerErrorException(e);
+                }
+            }
+            if (!storageHostnameVerify) {
+                httpsConn.setHostnameVerifier((hostname, session) -> true);
+            }
+        }
         if (storageAuth.isPresent() && storageAuth.isPresent()) {
             httpConn.setRequestProperty(
                     "Authorization",
@@ -288,5 +314,22 @@ public class ReportResource {
         } finally {
             fs.deleteIfExists(file);
         }
+    }
+
+    private static SSLContext ignoreSslContext() throws Exception {
+        SSLContext sslContext = SSLContext.getInstance("TLS");
+        sslContext.init(
+                null, new X509TrustManager[] {new X509TrustAllManager()}, new SecureRandom());
+        return sslContext;
+    }
+
+    private static final class X509TrustAllManager implements X509TrustManager {
+        public X509Certificate[] getAcceptedIssuers() {
+            return null;
+        }
+
+        public void checkClientTrusted(X509Certificate[] certs, String authType) {}
+
+        public void checkServerTrusted(X509Certificate[] certs, String authType) {}
     }
 }
