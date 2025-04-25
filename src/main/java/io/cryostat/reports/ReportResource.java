@@ -167,7 +167,7 @@ public class ReportResource {
                         .path(form.path)
                         .replaceQuery(form.query);
         URI downloadUri = uriBuilder.build();
-        logger.infov("Attempting to download presigned recording from {0}", downloadUri);
+        logger.debugv("Attempting to download presigned recording from {0}", downloadUri);
         HttpURLConnection httpConn = (HttpURLConnection) downloadUri.toURL().openConnection();
         httpConn.setRequestMethod("GET");
         if (httpConn instanceof HttpsURLConnection) {
