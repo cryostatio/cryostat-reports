@@ -15,13 +15,21 @@
  */
 package io.cryostat.reports;
 
+import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
+import java.security.KeyManagementException;
+import java.security.KeyStore;
+import java.security.KeyStoreException;
+import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
+import java.security.cert.CertificateException;
+import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
 import java.util.Map;
 import java.util.Optional;
@@ -33,6 +41,7 @@ import java.util.function.Predicate;
 
 import javax.net.ssl.HttpsURLConnection;
 import javax.net.ssl.SSLContext;
+import javax.net.ssl.TrustManagerFactory;
 import javax.net.ssl.X509TrustManager;
 
 import io.cryostat.core.reports.InterruptibleReportGenerator;
@@ -89,11 +98,17 @@ public class ReportResource {
     @ConfigProperty(name = "cryostat.storage.tls-version")
     String storageTlsVersion;
 
-    @ConfigProperty(name = "cryostat.storage.ignore-ssl")
-    boolean storageSslIgnore;
+    @ConfigProperty(name = "cryostat.storage.ignore-tls")
+    boolean storageTlsIgnore;
 
     @ConfigProperty(name = "cryostat.storage.verify-hostname")
     boolean storageHostnameVerify;
+
+    @ConfigProperty(name = "cryostat.storage.tls.ca.path")
+    Optional<java.nio.file.Path> storageCaPath;
+
+    @ConfigProperty(name = "cryostat.storage.tls.cert.path")
+    Optional<java.nio.file.Path> storageCertPath;
 
     @Inject InterruptibleReportGenerator generator;
     @Inject FileSystem fs;
@@ -153,10 +168,29 @@ public class ReportResource {
         httpConn.setRequestMethod("GET");
         if (httpConn instanceof HttpsURLConnection) {
             HttpsURLConnection httpsConn = (HttpsURLConnection) httpConn;
-            if (storageSslIgnore) {
+            if (storageTlsIgnore) {
                 try {
                     httpsConn.setSSLSocketFactory(
                             ignoreSslContext(storageTlsVersion).getSocketFactory());
+                } catch (Exception e) {
+                    logger.error(e);
+                    throw new InternalServerErrorException(e);
+                }
+            } else if (storageCaPath.isPresent() || storageCertPath.isPresent()) {
+                if (!(storageCaPath.isPresent() && storageCertPath.isPresent())) {
+                    Exception e =
+                            new IllegalStateException(
+                                    String.format(
+                                            "%s and %s must be both set or both unset",
+                                            "cryostat.storage.tls.ca.path",
+                                            "cryostat.storage.tls.cert.path"));
+                    logger.error(e);
+                    throw new InternalServerErrorException(e);
+                }
+                try {
+                    httpsConn.setSSLSocketFactory(
+                            trustSslCertContext(storageCaPath.get(), storageCertPath.get())
+                                    .getSocketFactory());
                 } catch (Exception e) {
                     logger.error(e);
                     throw new InternalServerErrorException(e);
@@ -325,6 +359,32 @@ public class ReportResource {
         sslContext.init(
                 null, new X509TrustManager[] {new X509TrustAllManager()}, new SecureRandom());
         return sslContext;
+    }
+
+    private static SSLContext trustSslCertContext(
+            java.nio.file.Path caPath, java.nio.file.Path certPath)
+            throws IOException,
+                    KeyStoreException,
+                    KeyManagementException,
+                    CertificateException,
+                    NoSuchAlgorithmException {
+        KeyStore keyStore = KeyStore.getInstance(KeyStore.getDefaultType());
+        CertificateFactory certFactory = CertificateFactory.getInstance("X.509");
+        try (InputStream ca = new FileInputStream(caPath.toFile());
+                InputStream cert = new FileInputStream(certPath.toFile()); ) {
+            keyStore.load(null, null);
+            keyStore.setCertificateEntry("storage-ca", certFactory.generateCertificate(ca));
+            keyStore.setCertificateEntry("storage-tls", certFactory.generateCertificate(cert));
+
+            TrustManagerFactory trustManagerFactory =
+                    TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
+            trustManagerFactory.init(keyStore);
+
+            SSLContext sslCtx = SSLContext.getInstance("TLSv1.2");
+            sslCtx.init(null, trustManagerFactory.getTrustManagers(), null);
+
+            return sslCtx;
+        }
     }
 
     private static final class X509TrustAllManager implements X509TrustManager {
