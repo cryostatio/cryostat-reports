@@ -189,7 +189,10 @@ public class ReportResource {
                 }
                 try {
                     httpsConn.setSSLSocketFactory(
-                            trustSslCertContext(storageCaPath.get(), storageCertPath.get())
+                            trustSslCertContext(
+                                            storageTlsVersion,
+                                            storageCaPath.get(),
+                                            storageCertPath.get())
                                     .getSocketFactory());
                 } catch (Exception e) {
                     logger.error(e);
@@ -362,7 +365,7 @@ public class ReportResource {
     }
 
     private static SSLContext trustSslCertContext(
-            java.nio.file.Path caPath, java.nio.file.Path certPath)
+            String tlsVersion, java.nio.file.Path caPath, java.nio.file.Path certPath)
             throws IOException,
                     KeyStoreException,
                     KeyManagementException,
@@ -380,7 +383,7 @@ public class ReportResource {
                     TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
             trustManagerFactory.init(keyStore);
 
-            SSLContext sslCtx = SSLContext.getInstance("TLSv1.2");
+            SSLContext sslCtx = SSLContext.getInstance(tlsVersion);
             sslCtx.init(null, trustManagerFactory.getTrustManagers(), null);
 
             return sslCtx;
