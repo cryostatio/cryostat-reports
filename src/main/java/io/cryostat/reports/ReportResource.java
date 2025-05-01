@@ -86,6 +86,9 @@ public class ReportResource {
     @ConfigProperty(name = "cryostat.storage.auth")
     Optional<String> storageAuth;
 
+    @ConfigProperty(name = "cryostat.storage.tls-version")
+    String storageTlsVersion;
+
     @ConfigProperty(name = "cryostat.storage.ignore-ssl")
     boolean storageSslIgnore;
 
@@ -152,7 +155,8 @@ public class ReportResource {
             HttpsURLConnection httpsConn = (HttpsURLConnection) httpConn;
             if (storageSslIgnore) {
                 try {
-                    httpsConn.setSSLSocketFactory(ignoreSslContext().getSocketFactory());
+                    httpsConn.setSSLSocketFactory(
+                            ignoreSslContext(storageTlsVersion).getSocketFactory());
                 } catch (Exception e) {
                     logger.error(e);
                     throw new InternalServerErrorException(e);
@@ -316,8 +320,8 @@ public class ReportResource {
         }
     }
 
-    private static SSLContext ignoreSslContext() throws Exception {
-        SSLContext sslContext = SSLContext.getInstance("TLS");
+    private static SSLContext ignoreSslContext(String tlsVersion) throws Exception {
+        SSLContext sslContext = SSLContext.getInstance(tlsVersion);
         sslContext.init(
                 null, new X509TrustManager[] {new X509TrustAllManager()}, new SecureRandom());
         return sslContext;
