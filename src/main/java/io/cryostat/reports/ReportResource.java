@@ -60,8 +60,8 @@ public class ReportResource {
     static final String SINGLETHREAD_PROPERTY =
             "org.openjdk.jmc.flightrecorder.parser.singlethreaded";
 
-    @ConfigProperty(name = "io.cryostat.reports.memory-factor", defaultValue = "10")
-    String memoryFactor;
+    @ConfigProperty(name = "io.cryostat.reports.memory-factor", defaultValue = "0")
+    long memoryFactor;
 
     @ConfigProperty(name = "io.cryostat.reports.timeout", defaultValue = "29000")
     String timeoutMs;
@@ -141,13 +141,7 @@ public class ReportResource {
                     TimeUnit.NANOSECONDS.toMillis(elapsed));
         }
 
-        Runtime runtime = Runtime.getRuntime();
-        System.gc();
-        long availableMemory = runtime.maxMemory() - runtime.totalMemory() + runtime.freeMemory();
-        long maxHandleableSize = availableMemory / Long.parseLong(memoryFactor);
-        if (file.toFile().length() > maxHandleableSize) {
-            throw new ClientErrorException(Response.Status.REQUEST_ENTITY_TOO_LARGE);
-        }
+        assertContentLength(file.toFile().length());
 
         now = System.nanoTime();
         elapsed = now - start;
@@ -155,6 +149,28 @@ public class ReportResource {
             throw new ServerErrorException(Response.Status.GATEWAY_TIMEOUT);
         }
         return Pair.of(file, Pair.of(start, elapsed));
+    }
+
+    private void assertContentLength(long length) {
+        if (memoryFactor <= 0) {
+            return;
+        }
+        if (length <= 0) {
+            logger.debugv("Request file has indeterminate length");
+            return;
+        }
+        logger.debugv("Request file has size {0} bytes", length);
+        Runtime runtime = Runtime.getRuntime();
+        System.gc();
+        long availableMemory = runtime.maxMemory() - runtime.totalMemory() + runtime.freeMemory();
+        long maxHandleableSize = availableMemory / memoryFactor;
+        if (length > maxHandleableSize) {
+            logger.warnv(
+                    "Rejecting request for file of {0} bytes. Estimated maximum handleable size is"
+                            + " {1} bytes.",
+                    length, maxHandleableSize);
+            throw new ClientErrorException(Response.Status.REQUEST_ENTITY_TOO_LARGE);
+        }
     }
 
     private void ctxHelper(RoutingContext ctx, Future<?> ff) {
