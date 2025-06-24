@@ -20,6 +20,7 @@ import static io.restassured.RestAssured.given;
 import java.io.File;
 import java.net.URISyntaxException;
 import java.nio.file.Paths;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -36,6 +37,7 @@ import org.hamcrest.Matchers;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.openjdk.jmc.flightrecorder.rules.IRule;
 import org.openjdk.jmc.flightrecorder.rules.RuleRegistry;
 
 @QuarkusTest
@@ -121,7 +123,7 @@ public class ReportResourceTest {
                 oMapper.readValue(response, new TypeReference<Map<String, RuleEvaluation>>() {});
 
         MatcherAssert.assertThat(map, Matchers.notNullValue());
-        MatcherAssert.assertThat(map, Matchers.aMapWithSize(9));
+        MatcherAssert.assertThat(map, Matchers.aMapWithSize(RuleRegistry.getRules().size()));
         for (var e : map.entrySet()) {
             MatcherAssert.assertThat(e, Matchers.notNullValue());
             MatcherAssert.assertThat(e.getValue(), Matchers.notNullValue());
@@ -138,7 +140,8 @@ public class ReportResourceTest {
                             Matchers.both(Matchers.lessThanOrEqualTo(100d))
                                     .and(Matchers.greaterThanOrEqualTo(0d))));
         }
-        Set.of(
+        var filteredKeys =
+                Set.of(
                         "HeapContent",
                         "LongGcPause",
                         "PrimitiveToObjectConversion",
@@ -147,8 +150,17 @@ public class ReportResourceTest {
                         "HighGc",
                         "HeapDump",
                         "Allocations.class",
-                        "LowOnPhysicalMemory")
-                .forEach(key -> MatcherAssert.assertThat(key, Matchers.in(map.keySet())));
+                        "LowOnPhysicalMemory");
+        filteredKeys.forEach(key -> MatcherAssert.assertThat(key, Matchers.in(map.keySet())));
+        var ignoredKeys =
+                new HashSet<>(RuleRegistry.getRules().stream().map(IRule::getId).toList());
+        ignoredKeys.removeAll(filteredKeys);
+        ignoredKeys.forEach(key -> MatcherAssert.assertThat(key, Matchers.in(map.keySet())));
+        ignoredKeys.forEach(
+                key ->
+                        MatcherAssert.assertThat(
+                                map.get(key),
+                                Matchers.hasProperty("score", Matchers.equalTo(-1d))));
     }
 
     @ParameterizedTest
@@ -179,10 +191,13 @@ public class ReportResourceTest {
                 oMapper.readValue(response, new TypeReference<Map<String, RuleEvaluation>>() {});
 
         MatcherAssert.assertThat(map, Matchers.notNullValue());
-        MatcherAssert.assertThat(map.keySet(), Matchers.empty());
+        MatcherAssert.assertThat(map, Matchers.aMapWithSize(RuleRegistry.getRules().size()));
+        MatcherAssert.assertThat(
+                map.entrySet().stream().map(e -> e.getValue().getScore()).toList(),
+                Matchers.everyItem(Matchers.equalTo(-1d)));
     }
 
-    private static class RuleEvaluation {
+    public static class RuleEvaluation {
         private double score;
         private String name;
         private String topic;
@@ -210,7 +225,7 @@ public class ReportResourceTest {
             return evaluation;
         }
 
-        private static class Evaluation {
+        public static class Evaluation {
             private String summary;
             private String explanation;
             private String solution;
@@ -236,7 +251,7 @@ public class ReportResourceTest {
                 return suggestions;
             }
 
-            private static class Suggestion {
+            public static class Suggestion {
                 private String name;
                 private String setting;
                 private String value;
