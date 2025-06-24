@@ -155,6 +155,9 @@ public class ReportResource {
         long start = System.nanoTime();
 
         if (storageBase.isEmpty()) {
+            logger.error(
+                    "Configuration property \"cryostat.storage.base-uri\" is unset, cannot handle"
+                            + " presigned report requests!");
             throw new ServerErrorException(Response.Status.BAD_GATEWAY);
         }
 
@@ -164,7 +167,7 @@ public class ReportResource {
                         .path(form.path)
                         .replaceQuery(form.query);
         URI downloadUri = uriBuilder.build();
-        logger.infov("Attempting to download presigned recording from {0}", downloadUri);
+        logger.debugv("Attempting to download presigned recording from {0}", downloadUri);
         HttpURLConnection httpConn = (HttpURLConnection) downloadUri.toURL().openConnection();
         httpConn.setRequestMethod("GET");
         if (httpConn instanceof HttpsURLConnection) {
@@ -222,9 +225,14 @@ public class ReportResource {
             return mapper.writeValueAsString(
                     evalMapFuture.get(timeout - elapsed, TimeUnit.NANOSECONDS));
         } catch (ExecutionException | InterruptedException e) {
+            logger.error(e);
             throw new InternalServerErrorException(e);
         } catch (TimeoutException e) {
+            logger.error(e);
             throw new ServerErrorException(Response.Status.GATEWAY_TIMEOUT, e);
+        } catch (Exception e) {
+            logger.error(e);
+            throw e;
         } finally {
             httpConn.disconnect();
         }
