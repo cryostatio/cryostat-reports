@@ -207,7 +207,7 @@ public class ReportResource {
                 httpsConn.setHostnameVerifier((hostname, session) -> true);
             }
         }
-        if (storageAuth.isPresent() && storageAuth.isPresent()) {
+        if (storageAuthMethod.isPresent() && storageAuth.isPresent()) {
             httpConn.setRequestProperty(
                     "Authorization",
                     String.format("%s %s", storageAuthMethod.get(), storageAuth.get()));
