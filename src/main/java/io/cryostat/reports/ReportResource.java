@@ -88,6 +88,115 @@ public class ReportResource {
     public void healthCheck() {}
 
     @Blocking
+<<<<<<< HEAD
+=======
+    @Path("remote_report")
+    @Produces(MediaType.APPLICATION_JSON)
+    @Consumes(MediaType.MULTIPART_FORM_DATA)
+    @POST
+    public String getReportFromPresigned(RoutingContext ctx, @BeanParam PresignedFormData form)
+            throws IOException, URISyntaxException {
+        // TODO queue these requests so we don't overload ourselves, in particular by reading
+        // multiple JFR files into memory at once for analysis. We should process these serially
+        // from the queue. If we are getting overloaded then our response time to each subsequent
+        // request will continue to grow unbounded, so at some point we should stop accepting
+        // requests when the queue is too long.
+        // Since this is a @Blocking method that runs on a worker thread pool, can we implement this
+        // serial queueing behaviour by simply synchronizing on a shared singleton resource ex. the
+        // generator instance?
+        // A better long-term solution would be to use a shared messaging queue between Cryostat and
+        // the report generators, so that Cryostat can put up a URL for a presigned recording to be
+        // processed and a free report generator can claim that work item and then post back the
+        // report response
+        long timeout = TimeUnit.MILLISECONDS.toNanos(Long.parseLong(timeoutMs));
+        long start = System.nanoTime();
+
+        if (storageBase.isEmpty()) {
+            logger.error(
+                    "Configuration property \"cryostat.storage.base-uri\" is unset, cannot handle"
+                            + " presigned report requests!");
+            throw new ServerErrorException(Response.Status.BAD_GATEWAY);
+        }
+
+        UriBuilder uriBuilder =
+                UriBuilder.newInstance()
+                        .uri(new URI(storageBase.get()))
+                        .path(form.path)
+                        .replaceQuery(form.query);
+        URI downloadUri = uriBuilder.build();
+        logger.debugv("Attempting to download presigned recording from {0}", downloadUri);
+        HttpURLConnection httpConn = (HttpURLConnection) downloadUri.toURL().openConnection();
+        httpConn.setRequestMethod("GET");
+        if (httpConn instanceof HttpsURLConnection) {
+            HttpsURLConnection httpsConn = (HttpsURLConnection) httpConn;
+            if (storageTlsIgnore) {
+                try {
+                    httpsConn.setSSLSocketFactory(
+                            ignoreSslContext(storageTlsVersion).getSocketFactory());
+                } catch (Exception e) {
+                    logger.error(e);
+                    throw new InternalServerErrorException(e);
+                }
+            } else if (storageCaPath.isPresent() || storageCertPath.isPresent()) {
+                if (!(storageCaPath.isPresent() && storageCertPath.isPresent())) {
+                    Exception e =
+                            new IllegalStateException(
+                                    String.format(
+                                            "%s and %s must be both set or both unset",
+                                            "cryostat.storage.tls.ca.path",
+                                            "cryostat.storage.tls.cert.path"));
+                    logger.error(e);
+                    throw new InternalServerErrorException(e);
+                }
+                try {
+                    httpsConn.setSSLSocketFactory(
+                            trustSslCertContext(
+                                            storageTlsVersion,
+                                            storageCaPath.get(),
+                                            storageCertPath.get())
+                                    .getSocketFactory());
+                } catch (Exception e) {
+                    logger.error(e);
+                    throw new InternalServerErrorException(e);
+                }
+            }
+            if (!storageHostnameVerify) {
+                httpsConn.setHostnameVerifier((hostname, session) -> true);
+            }
+        }
+        if (storageAuthMethod.isPresent() && storageAuth.isPresent()) {
+            httpConn.setRequestProperty(
+                    "Authorization",
+                    String.format("%s %s", storageAuthMethod.get(), storageAuth.get()));
+        }
+
+        assertContentLength(httpConn.getContentLengthLong());
+        try (var stream = httpConn.getInputStream()) {
+
+            Predicate<IRule> predicate = rfp.parse(form.filter);
+            Future<Map<String, AnalysisResult>> evalMapFuture = null;
+
+            evalMapFuture = generator.generateEvalMapInterruptibly(stream, predicate);
+            long elapsed = System.nanoTime() - start;
+            ctxHelper(ctx, evalMapFuture);
+            return mapper.writeValueAsString(
+                    evalMapFuture.get(timeout - elapsed, TimeUnit.NANOSECONDS));
+        } catch (ExecutionException | InterruptedException e) {
+            logger.error(e);
+            throw new InternalServerErrorException(e);
+        } catch (TimeoutException e) {
+            logger.error(e);
+            throw new ServerErrorException(Response.Status.GATEWAY_TIMEOUT, e);
+        } catch (Exception e) {
+            logger.error(e);
+            throw e;
+        } finally {
+            httpConn.disconnect();
+        }
+    }
+
+    @Blocking
+>>>>>>> ae6208e (fix(presign): fix typo checking for storage auth (#383))
     @Path("report")
     @Produces(MediaType.APPLICATION_JSON)
     @Consumes(MediaType.MULTIPART_FORM_DATA)
