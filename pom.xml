@@ -3,7 +3,7 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>io.cryostat</groupId>
   <artifactId>cryostat-reports</artifactId>
-  <version>4.0.2-SNAPSHOT</version>
+  <version>4.0.2</version>
   <repositories>
     <repository>
       <id>s01.oss.sonatype.org-snapshot</id>
@@ -36,7 +36,7 @@
     <assembly-plugin.version>3.7.1</assembly-plugin.version>
     <com.diffplug.spotless.maven.plugin.version>2.44.2</com.diffplug.spotless.maven.plugin.version>
     <org.codehaus.mojo.build.helper.plugin.version>3.6.0</org.codehaus.mojo.build.helper.plugin.version>
-    <io.cryostat.core.version>4.0.2-SNAPSHOT</io.cryostat.core.version>
+    <io.cryostat.core.version>4.0.2</io.cryostat.core.version>
     <org.openjdk.jmc.version>9.0.0</org.openjdk.jmc.version>
     <com.mycila.license.maven.plugin.version>4.6</com.mycila.license.maven.plugin.version>
   </properties>
