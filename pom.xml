@@ -23,7 +23,11 @@
     </repository>
   </repositories>
   <properties>
+<<<<<<< HEAD
     <compiler-plugin.version>3.13.0</compiler-plugin.version>
+=======
+    <compiler-plugin.version>3.14.1</compiler-plugin.version>
+>>>>>>> abb9b02 (build(deps): bump org.apache.maven.plugins:maven-compiler-plugin (#396))
     <maven.compiler.parameters>true</maven.compiler.parameters>
     <maven.compiler.source>21</maven.compiler.source>
     <maven.compiler.target>21</maven.compiler.target>
