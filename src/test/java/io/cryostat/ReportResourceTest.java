@@ -43,6 +43,8 @@ import org.openjdk.jmc.flightrecorder.rules.RuleRegistry;
 @QuarkusTest
 public class ReportResourceTest {
 
+    private static final int NUM_CUSTOM_RULES = 1;
+
     @Test
     public void testHealthEndpoint() {
         given().when().get("/health").then().statusCode(204);
@@ -73,7 +75,7 @@ public class ReportResourceTest {
         ObjectMapper oMapper = new ObjectMapper();
         Map<String, RuleEvaluation> map =
                 oMapper.readValue(response, new TypeReference<Map<String, RuleEvaluation>>() {});
-        int numRules = RuleRegistry.getRules().size();
+        int numRules = RuleRegistry.getRules().size() + NUM_CUSTOM_RULES;
 
         MatcherAssert.assertThat(map, Matchers.notNullValue());
         MatcherAssert.assertThat(map, Matchers.aMapWithSize(numRules));
@@ -123,7 +125,8 @@ public class ReportResourceTest {
                 oMapper.readValue(response, new TypeReference<Map<String, RuleEvaluation>>() {});
 
         MatcherAssert.assertThat(map, Matchers.notNullValue());
-        MatcherAssert.assertThat(map, Matchers.aMapWithSize(RuleRegistry.getRules().size()));
+        MatcherAssert.assertThat(
+                map, Matchers.aMapWithSize(RuleRegistry.getRules().size() + NUM_CUSTOM_RULES));
         for (var e : map.entrySet()) {
             MatcherAssert.assertThat(e, Matchers.notNullValue());
             MatcherAssert.assertThat(e.getValue(), Matchers.notNullValue());
@@ -191,7 +194,8 @@ public class ReportResourceTest {
                 oMapper.readValue(response, new TypeReference<Map<String, RuleEvaluation>>() {});
 
         MatcherAssert.assertThat(map, Matchers.notNullValue());
-        MatcherAssert.assertThat(map, Matchers.aMapWithSize(RuleRegistry.getRules().size()));
+        MatcherAssert.assertThat(
+                map, Matchers.aMapWithSize(RuleRegistry.getRules().size() + NUM_CUSTOM_RULES));
         MatcherAssert.assertThat(
                 map.entrySet().stream().map(e -> e.getValue().getScore()).toList(),
                 Matchers.everyItem(Matchers.equalTo(-1d)));
