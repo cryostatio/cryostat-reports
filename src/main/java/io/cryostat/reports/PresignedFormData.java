@@ -15,10 +15,9 @@
  */
 package io.cryostat.reports;
 
-import jakarta.ws.rs.core.MediaType;
-
 import java.net.URI;
 
+import jakarta.ws.rs.core.MediaType;
 import org.jboss.resteasy.reactive.PartType;
 import org.jboss.resteasy.reactive.RestForm;
 
