@@ -87,9 +87,6 @@ public class ReportResource {
     @ConfigProperty(name = "io.cryostat.reports.timeout", defaultValue = "29000")
     String timeoutMs;
 
-    @ConfigProperty(name = "cryostat.storage.base-uri")
-    Optional<String> storageBase;
-
     @ConfigProperty(name = "cryostat.storage.auth-method")
     Optional<String> storageAuthMethod;
 
@@ -154,21 +151,8 @@ public class ReportResource {
         long timeout = TimeUnit.MILLISECONDS.toNanos(Long.parseLong(timeoutMs));
         long start = System.nanoTime();
 
-        if (storageBase.isEmpty()) {
-            logger.error(
-                    "Configuration property \"cryostat.storage.base-uri\" is unset, cannot handle"
-                            + " presigned report requests!");
-            throw new ServerErrorException(Response.Status.BAD_GATEWAY);
-        }
-
-        UriBuilder uriBuilder =
-                UriBuilder.newInstance()
-                        .uri(new URI(storageBase.get()))
-                        .path(form.path)
-                        .replaceQuery(form.query);
-        URI downloadUri = uriBuilder.build();
-        logger.debugv("Attempting to download presigned recording from {0}", downloadUri);
-        HttpURLConnection httpConn = (HttpURLConnection) downloadUri.toURL().openConnection();
+        logger.debugv("Attempting to download presigned recording from {0}", form.uri);
+        HttpURLConnection httpConn = (HttpURLConnection) form.uri.toURL().openConnection();
         httpConn.setRequestMethod("GET");
         if (httpConn instanceof HttpsURLConnection) {
             HttpsURLConnection httpsConn = (HttpsURLConnection) httpConn;

@@ -16,17 +16,16 @@
 package io.cryostat.reports;
 
 import jakarta.ws.rs.core.MediaType;
+
+import java.net.URI;
+
 import org.jboss.resteasy.reactive.PartType;
 import org.jboss.resteasy.reactive.RestForm;
 
 public class PresignedFormData {
     @RestForm
     @PartType(MediaType.TEXT_PLAIN)
-    public String path;
-
-    @RestForm
-    @PartType(MediaType.TEXT_PLAIN)
-    public String query;
+    public URI uri;
 
     @RestForm
     @PartType(MediaType.TEXT_PLAIN)
