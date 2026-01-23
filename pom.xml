@@ -35,7 +35,7 @@
     <quarkus.platform.version>3.27.2</quarkus.platform.version>
     <surefire-plugin.version>3.5.4</surefire-plugin.version>
     <assembly-plugin.version>3.8.0</assembly-plugin.version>
-    <com.diffplug.spotless.maven.plugin.version>3.1.0</com.diffplug.spotless.maven.plugin.version>
+    <com.diffplug.spotless.maven.plugin.version>3.2.0</com.diffplug.spotless.maven.plugin.version>
     <org.codehaus.mojo.build.helper.plugin.version>3.6.1</org.codehaus.mojo.build.helper.plugin.version>
     <io.cryostat.core.version>4.2.0-SNAPSHOT</io.cryostat.core.version>
     <org.openjdk.jmc.version>9.1.1</org.openjdk.jmc.version>
