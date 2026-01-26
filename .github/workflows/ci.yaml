@@ -40,7 +40,7 @@ jobs:
     - name: Fail if PR and safe-to-test label NOT applied
       if: ${{ github.event_name == 'pull_request_target' && !contains(github.event.pull_request.labels.*.name, 'safe-to-test') }}
       run: exit 1
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v6
       with:
         repository: ${{ env.REPOSITORY }}
         ref: ${{ env.REF }}
@@ -60,7 +60,7 @@ jobs:
       packages: write
       contents: read
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v6
       with:
         repository: ${{ env.REPOSITORY }}
         ref: ${{ env.REF }}
