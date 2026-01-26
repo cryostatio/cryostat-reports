@@ -64,7 +64,7 @@ jobs:
       with:
         repository: ${{ env.REPOSITORY }}
         ref: ${{ env.REF }}
-    - uses: actions/setup-java@v3
+    - uses: actions/setup-java@v5
       with:
         java-version: '21'
         distribution: 'temurin'
