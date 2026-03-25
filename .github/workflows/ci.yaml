@@ -14,7 +14,7 @@ on:
       - v[0-9]+
       - v[0-9]+.[0-9]+
       - cryostat-v[0-9]+.[0-9]+
-  pull_request_target:
+  pull_request:
     types:
       - opened
       - reopened
@@ -37,10 +37,7 @@ jobs:
   get-pom-properties:
     runs-on: ubuntu-latest
     steps:
-    - name: Fail if PR and safe-to-test label NOT applied
-      if: ${{ github.event_name == 'pull_request_target' && !contains(github.event.pull_request.labels.*.name, 'safe-to-test') }}
-      run: exit 1
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       with:
         repository: ${{ env.REPOSITORY }}
         ref: ${{ env.REF }}
@@ -60,15 +57,15 @@ jobs:
       packages: write
       contents: read
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       with:
         repository: ${{ env.REPOSITORY }}
         ref: ${{ env.REF }}
-    - uses: actions/setup-java@v5
+    - uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5.2.0
       with:
         java-version: '21'
         distribution: 'temurin'
-    - uses: actions/cache@v5
+    - uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
       with:
         path: ~/.m2
         key: ${{ runner.os }}-build-${{ hashFiles('**/pom.xml') }}
@@ -79,7 +76,7 @@ jobs:
       run: ./mvnw -Dquarkus.container-image.build=false -B -U clean verify
     - name: Build container images and manifest
       id: buildah-build
-      uses: redhat-actions/buildah-build@v2
+      uses: redhat-actions/buildah-build@7a95fa7ee0f02d552a32753e7414641a04307056 # v2
       env:
         IMAGE_VERSION: ${{ needs.get-pom-properties.outputs.image-version }}
       with:
@@ -91,16 +88,3 @@ jobs:
           ./src/main/docker/Dockerfile.jvm
         extra-args: |
           --jobs=2
-    - name: Push to quay.io
-      id: push-to-quay
-      uses: redhat-actions/push-to-registry@v2
-      with:
-        image: cryostat-reports
-        tags: ${{ steps.buildah-build.outputs.tags }}
-        registry: ${{ env.CI_REGISTRY }}
-        username: ${{ env.CI_USER }}
-        password: ${{ secrets.REGISTRY_PASSWORD }}
-      if: ${{ github.event_name == 'push' && github.repository_owner == 'cryostatio' }}
-    - name: Print image URL
-      run: echo "Image pushed to ${{ steps.push-to-quay.outputs.registry-paths }}"
-      if: ${{ github.event_name == 'push' && github.repository_owner == 'cryostatio' }}
