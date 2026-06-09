@@ -19,6 +19,7 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
+import java.net.ProtocolException;
 import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
@@ -44,7 +45,7 @@ import javax.net.ssl.TrustManagerFactory;
 import javax.net.ssl.X509TrustManager;
 
 import io.cryostat.core.diagnostic.HeapDumpAnalysis;
-import io.cryostat.core.diagnostic.InterruptibleHeapDumpReportGenerator;
+import io.cryostat.core.diagnostic.HeapDumpReportGenerator;
 import io.cryostat.core.reports.InterruptibleReportGenerator;
 import io.cryostat.core.reports.InterruptibleReportGenerator.AnalysisResult;
 import io.cryostat.core.util.RuleFilterParser;
@@ -88,6 +89,9 @@ public class ReportResource {
     @ConfigProperty(name = "io.cryostat.reports.timeout", defaultValue = "29000")
     String timeoutMs;
 
+    @ConfigProperty(name = "io.cryostat.reports.heap-dump-memory-limit", defaultValue = "0")
+    int heapDumpMemoryLimit;
+
     @ConfigProperty(name = "cryostat.storage.auth-method")
     Optional<String> storageAuthMethod;
 
@@ -110,7 +114,7 @@ public class ReportResource {
     Optional<java.nio.file.Path> storageCertPath;
 
     @Inject InterruptibleReportGenerator generator;
-    @Inject InterruptibleHeapDumpReportGenerator heapDumpGenerator;
+    @Inject HeapDumpReportGenerator heapDumpGenerator;
     @Inject RuleFilterParser rfp;
     @Inject FileSystem fs;
     @Inject ObjectMapper mapper;
@@ -216,7 +220,7 @@ public class ReportResource {
         }
     }
 
-    private InputStream getPresignedObjectStream(HttpURLConnection httpConn) {
+    private InputStream getPresignedObjectStream(HttpURLConnection httpConn) throws IOException, ProtocolException {
         httpConn.setRequestMethod("GET");
         if (httpConn instanceof HttpsURLConnection) {
             HttpsURLConnection httpsConn = (HttpsURLConnection) httpConn;
@@ -255,7 +259,6 @@ public class ReportResource {
                 httpsConn.setHostnameVerifier((hostname, session) -> true);
             }
         }
-        logger.debugv("Attempting to download presigned heap dump from {0}", form.uri);
         if (storageAuthMethod.isPresent() && storageAuth.isPresent()) {
             httpConn.setRequestProperty(
                     "Authorization",
@@ -290,7 +293,7 @@ public class ReportResource {
         HttpURLConnection httpConn = (HttpURLConnection) form.uri.toURL().openConnection();
         try (var stream = getPresignedObjectStream(httpConn)) {
             Future<HeapDumpAnalysis> evalFuture = null;
-            evalFuture = heapDumpGenerator.generateInterruptibly(form.jvmId, form.heapDumpId, stream);
+            evalFuture = heapDumpGenerator.generate(stream, heapDumpMemoryLimit);
             long elapsed = System.nanoTime() - start;
             ctxHelper(ctx, evalFuture);
             return mapper.writeValueAsString(
@@ -328,7 +331,7 @@ public class ReportResource {
         Future<HeapDumpAnalysis> evalFuture = null;
 
         try (var stream = fs.newInputStream(file)) {
-            evalFuture = heapDumpGenerator.generateInterruptibly(form.jvmId, form.heapDumpId, stream);
+            evalFuture = heapDumpGenerator.generate(stream, heapDumpMemoryLimit);
             ctxHelper(ctx, evalFuture);
             return mapper.writeValueAsString(
                     evalFuture.get(timeout - elapsed, TimeUnit.NANOSECONDS));
