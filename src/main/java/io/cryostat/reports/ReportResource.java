@@ -19,6 +19,7 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
+import java.net.ProtocolException;
 import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
@@ -43,6 +44,8 @@ import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManagerFactory;
 import javax.net.ssl.X509TrustManager;
 
+import io.cryostat.core.diagnostic.HeapDumpAnalysis;
+import io.cryostat.core.diagnostic.HeapDumpReportGenerator;
 import io.cryostat.core.reports.InterruptibleReportGenerator;
 import io.cryostat.core.reports.InterruptibleReportGenerator.AnalysisResult;
 import io.cryostat.core.util.RuleFilterParser;
@@ -68,6 +71,7 @@ import jakarta.ws.rs.core.Response;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.Pair;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
+import org.eclipse.microprofile.faulttolerance.Bulkhead;
 import org.jboss.logging.Logger;
 import org.jboss.resteasy.reactive.multipart.FileUpload;
 import org.openjdk.jmc.common.io.IOToolkit;
@@ -84,6 +88,9 @@ public class ReportResource {
 
     @ConfigProperty(name = "io.cryostat.reports.timeout", defaultValue = "29000")
     String timeoutMs;
+
+    @ConfigProperty(name = "io.cryostat.reports.heap-dump-memory-limit", defaultValue = "0")
+    int heapDumpMemoryLimit;
 
     @ConfigProperty(name = "cryostat.storage.auth-method")
     Optional<String> storageAuthMethod;
@@ -107,6 +114,7 @@ public class ReportResource {
     Optional<java.nio.file.Path> storageCertPath;
 
     @Inject InterruptibleReportGenerator generator;
+    @Inject HeapDumpReportGenerator heapDumpGenerator;
     @Inject RuleFilterParser rfp;
     @Inject FileSystem fs;
     @Inject ObjectMapper mapper;
@@ -127,6 +135,7 @@ public class ReportResource {
     @Produces(MediaType.TEXT_PLAIN)
     public void healthCheck() {}
 
+    @Bulkhead
     @Blocking
     @Path("remote_report")
     @Produces(MediaType.APPLICATION_JSON)
@@ -151,6 +160,67 @@ public class ReportResource {
 
         logger.debugv("Attempting to download presigned recording from {0}", form.uri);
         HttpURLConnection httpConn = (HttpURLConnection) form.uri.toURL().openConnection();
+        try (var stream = getPresignedObjectStream(httpConn)) {
+
+            Predicate<IRule> predicate = rfp.parse(form.filter);
+            Future<Map<String, AnalysisResult>> evalMapFuture = null;
+
+            evalMapFuture = generator.generateEvalMapInterruptibly(stream, predicate);
+            long elapsed = System.nanoTime() - start;
+            ctxHelper(ctx, evalMapFuture);
+            return mapper.writeValueAsString(
+                    evalMapFuture.get(timeout - elapsed, TimeUnit.NANOSECONDS));
+        } catch (ExecutionException | InterruptedException e) {
+            logger.error(e);
+            throw new InternalServerErrorException(e);
+        } catch (TimeoutException e) {
+            logger.error(e);
+            throw new ServerErrorException(Response.Status.GATEWAY_TIMEOUT, e);
+        } catch (Exception e) {
+            logger.error(e);
+            throw e;
+        } finally {
+            httpConn.disconnect();
+        }
+    }
+
+    @Blocking
+    @Bulkhead
+    @Path("report")
+    @Produces(MediaType.APPLICATION_JSON)
+    @Consumes(MediaType.MULTIPART_FORM_DATA)
+    @POST
+    public String getReport(RoutingContext ctx, @BeanParam RecordingFormData form)
+            throws IOException {
+        FileUpload upload = form.file;
+
+        Pair<java.nio.file.Path, Pair<Long, Long>> uploadResult = handleUpload(upload);
+        java.nio.file.Path file = uploadResult.getLeft();
+        long timeout = TimeUnit.MILLISECONDS.toNanos(Long.parseLong(timeoutMs));
+        long start = uploadResult.getRight().getLeft();
+        long elapsed = uploadResult.getRight().getRight();
+
+        if (StringUtils.isNotBlank(form.filter)) {
+            logger.debugv("Received request with filter: {0}", form.filter);
+        }
+        Predicate<IRule> predicate = rfp.parse(form.filter);
+        Future<Map<String, AnalysisResult>> evalMapFuture = null;
+
+        try (var stream = fs.newInputStream(file)) {
+            evalMapFuture = generator.generateEvalMapInterruptibly(stream, predicate);
+            ctxHelper(ctx, evalMapFuture);
+            return mapper.writeValueAsString(
+                    evalMapFuture.get(timeout - elapsed, TimeUnit.NANOSECONDS));
+        } catch (ExecutionException | InterruptedException e) {
+            throw new InternalServerErrorException(e);
+        } catch (TimeoutException e) {
+            throw new ServerErrorException(Response.Status.GATEWAY_TIMEOUT, e);
+        } finally {
+            cleanupHelper(evalMapFuture, file, upload.fileName(), start);
+        }
+    }
+
+    private InputStream getPresignedObjectStream(HttpURLConnection httpConn) throws IOException, ProtocolException {
         httpConn.setRequestMethod("GET");
         if (httpConn instanceof HttpsURLConnection) {
             HttpsURLConnection httpsConn = (HttpsURLConnection) httpConn;
@@ -194,18 +264,40 @@ public class ReportResource {
                     "Authorization",
                     String.format("%s %s", storageAuthMethod.get(), storageAuth.get()));
         }
-
         assertContentLength(httpConn.getContentLengthLong());
-        try (var stream = httpConn.getInputStream()) {
+        return httpConn.getInputStream();
+    }
 
-            Predicate<IRule> predicate = rfp.parse(form.filter);
-            Future<Map<String, AnalysisResult>> evalMapFuture = null;
-
-            evalMapFuture = generator.generateEvalMapInterruptibly(stream, predicate);
+    @Blocking
+    @Bulkhead
+    @Path("heapdump/remote_report")
+    @Produces(MediaType.APPLICATION_JSON)
+    @Consumes(MediaType.MULTIPART_FORM_DATA)
+    @POST
+    public String getHeapDumpReportFromPresigned(RoutingContext ctx, @BeanParam PresignedHeapDumpFormData form)
+            throws IOException, URISyntaxException {
+        // TODO queue these requests so we don't overload ourselves, in particular by reading
+        // multiple Heap Dump files into memory at once for analysis. We should process these serially
+        // from the queue. If we are getting overloaded then our response time to each subsequent
+        // request will continue to grow unbounded, so at some point we should stop accepting
+        // requests when the queue is too long.
+        // Since this is a @Blocking method that runs on a worker thread pool, can we implement this
+        // serial queueing behaviour by simply synchronizing on a shared singleton resource ex. the
+        // generator instance?
+        // A better long-term solution would be to use a shared messaging queue between Cryostat and
+        // the report generators, so that Cryostat can put up a URL for a presigned recording to be
+        // processed and a free report generator can claim that work item and then post back the
+        // report response
+        long timeout = TimeUnit.MILLISECONDS.toNanos(Long.parseLong(timeoutMs));
+        long start = System.nanoTime();
+        HttpURLConnection httpConn = (HttpURLConnection) form.uri.toURL().openConnection();
+        try (var stream = getPresignedObjectStream(httpConn)) {
+            Future<HeapDumpAnalysis> evalFuture = null;
+            evalFuture = heapDumpGenerator.generate(stream, heapDumpMemoryLimit);
             long elapsed = System.nanoTime() - start;
-            ctxHelper(ctx, evalMapFuture);
+            ctxHelper(ctx, evalFuture);
             return mapper.writeValueAsString(
-                    evalMapFuture.get(timeout - elapsed, TimeUnit.NANOSECONDS));
+                    evalFuture.get(timeout - elapsed, TimeUnit.NANOSECONDS));
         } catch (ExecutionException | InterruptedException e) {
             logger.error(e);
             throw new InternalServerErrorException(e);
@@ -221,11 +313,12 @@ public class ReportResource {
     }
 
     @Blocking
-    @Path("report")
+    @Bulkhead
+    @Path("heapdump/report")
     @Produces(MediaType.APPLICATION_JSON)
     @Consumes(MediaType.MULTIPART_FORM_DATA)
     @POST
-    public String getReport(RoutingContext ctx, @BeanParam RecordingFormData form)
+    public String getHeapDumpReport(RoutingContext ctx, @BeanParam HeapDumpFormData form)
             throws IOException {
         FileUpload upload = form.file;
 
@@ -235,23 +328,19 @@ public class ReportResource {
         long start = uploadResult.getRight().getLeft();
         long elapsed = uploadResult.getRight().getRight();
 
-        if (StringUtils.isNotBlank(form.filter)) {
-            logger.debugv("Received request with filter: {0}", form.filter);
-        }
-        Predicate<IRule> predicate = rfp.parse(form.filter);
-        Future<Map<String, AnalysisResult>> evalMapFuture = null;
+        Future<HeapDumpAnalysis> evalFuture = null;
 
         try (var stream = fs.newInputStream(file)) {
-            evalMapFuture = generator.generateEvalMapInterruptibly(stream, predicate);
-            ctxHelper(ctx, evalMapFuture);
+            evalFuture = heapDumpGenerator.generate(stream, heapDumpMemoryLimit);
+            ctxHelper(ctx, evalFuture);
             return mapper.writeValueAsString(
-                    evalMapFuture.get(timeout - elapsed, TimeUnit.NANOSECONDS));
+                    evalFuture.get(timeout - elapsed, TimeUnit.NANOSECONDS));
         } catch (ExecutionException | InterruptedException e) {
             throw new InternalServerErrorException(e);
         } catch (TimeoutException e) {
             throw new ServerErrorException(Response.Status.GATEWAY_TIMEOUT, e);
         } finally {
-            cleanupHelper(evalMapFuture, file, upload.fileName(), start);
+            cleanupHelper(evalFuture, file, upload.fileName(), start);
         }
     }
 
