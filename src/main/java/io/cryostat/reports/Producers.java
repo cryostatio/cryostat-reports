@@ -49,7 +49,8 @@ public class Producers {
         boolean singleThread =
                 Runtime.getRuntime().availableProcessors() < 2
                         || Boolean.getBoolean(ReportResource.SINGLETHREAD_PROPERTY);
-        return new HeapDumpReportGenerator(singleThread ? Executors.newSingleThreadExecutor() : ForkJoinPool.commonPool());
+        return new HeapDumpReportGenerator(
+                singleThread ? Executors.newSingleThreadExecutor() : ForkJoinPool.commonPool());
     }
 
     @Produces

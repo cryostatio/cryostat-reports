@@ -31,6 +31,7 @@ import java.security.SecureRandom;
 import java.security.cert.CertificateException;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
+import java.time.temporal.ChronoUnit;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ExecutionException;
@@ -72,6 +73,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.Pair;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.eclipse.microprofile.faulttolerance.Bulkhead;
+import org.eclipse.microprofile.faulttolerance.Timeout;
 import org.jboss.logging.Logger;
 import org.jboss.resteasy.reactive.multipart.FileUpload;
 import org.openjdk.jmc.common.io.IOToolkit;
@@ -220,7 +222,8 @@ public class ReportResource {
         }
     }
 
-    private InputStream getPresignedObjectStream(HttpURLConnection httpConn) throws IOException, ProtocolException {
+    private InputStream getPresignedObjectStream(HttpURLConnection httpConn)
+            throws IOException, ProtocolException {
         httpConn.setRequestMethod("GET");
         if (httpConn instanceof HttpsURLConnection) {
             HttpsURLConnection httpsConn = (HttpsURLConnection) httpConn;
@@ -269,41 +272,24 @@ public class ReportResource {
     }
 
     @Blocking
-    @Bulkhead
+    @Bulkhead(value = 1)
+    @Timeout(value = 29000, unit = ChronoUnit.MILLIS)
     @Path("heapdump/remote_report")
     @Produces(MediaType.APPLICATION_JSON)
     @Consumes(MediaType.MULTIPART_FORM_DATA)
     @POST
-    public String getHeapDumpReportFromPresigned(RoutingContext ctx, @BeanParam PresignedHeapDumpFormData form)
+    public String getHeapDumpReportFromPresigned(
+            RoutingContext ctx, @BeanParam PresignedHeapDumpFormData form)
             throws IOException, URISyntaxException {
-        // TODO queue these requests so we don't overload ourselves, in particular by reading
-        // multiple Heap Dump files into memory at once for analysis. We should process these serially
-        // from the queue. If we are getting overloaded then our response time to each subsequent
-        // request will continue to grow unbounded, so at some point we should stop accepting
-        // requests when the queue is too long.
-        // Since this is a @Blocking method that runs on a worker thread pool, can we implement this
-        // serial queueing behaviour by simply synchronizing on a shared singleton resource ex. the
-        // generator instance?
-        // A better long-term solution would be to use a shared messaging queue between Cryostat and
-        // the report generators, so that Cryostat can put up a URL for a presigned recording to be
-        // processed and a free report generator can claim that work item and then post back the
-        // report response
-        long timeout = TimeUnit.MILLISECONDS.toNanos(Long.parseLong(timeoutMs));
-        long start = System.nanoTime();
         HttpURLConnection httpConn = (HttpURLConnection) form.uri.toURL().openConnection();
         try (var stream = getPresignedObjectStream(httpConn)) {
             Future<HeapDumpAnalysis> evalFuture = null;
             evalFuture = heapDumpGenerator.generate(stream, heapDumpMemoryLimit);
-            long elapsed = System.nanoTime() - start;
             ctxHelper(ctx, evalFuture);
-            return mapper.writeValueAsString(
-                    evalFuture.get(timeout - elapsed, TimeUnit.NANOSECONDS));
+            return mapper.writeValueAsString(evalFuture.get());
         } catch (ExecutionException | InterruptedException e) {
             logger.error(e);
             throw new InternalServerErrorException(e);
-        } catch (TimeoutException e) {
-            logger.error(e);
-            throw new ServerErrorException(Response.Status.GATEWAY_TIMEOUT, e);
         } catch (Exception e) {
             logger.error(e);
             throw e;
@@ -314,6 +300,7 @@ public class ReportResource {
 
     @Blocking
     @Bulkhead
+    @Timeout(value = 29000, unit = ChronoUnit.MILLIS)
     @Path("heapdump/report")
     @Produces(MediaType.APPLICATION_JSON)
     @Consumes(MediaType.MULTIPART_FORM_DATA)
@@ -324,21 +311,16 @@ public class ReportResource {
 
         Pair<java.nio.file.Path, Pair<Long, Long>> uploadResult = handleUpload(upload);
         java.nio.file.Path file = uploadResult.getLeft();
-        long timeout = TimeUnit.MILLISECONDS.toNanos(Long.parseLong(timeoutMs));
         long start = uploadResult.getRight().getLeft();
-        long elapsed = uploadResult.getRight().getRight();
 
         Future<HeapDumpAnalysis> evalFuture = null;
 
         try (var stream = fs.newInputStream(file)) {
             evalFuture = heapDumpGenerator.generate(stream, heapDumpMemoryLimit);
             ctxHelper(ctx, evalFuture);
-            return mapper.writeValueAsString(
-                    evalFuture.get(timeout - elapsed, TimeUnit.NANOSECONDS));
+            return mapper.writeValueAsString(evalFuture.get());
         } catch (ExecutionException | InterruptedException e) {
             throw new InternalServerErrorException(e);
-        } catch (TimeoutException e) {
-            throw new ServerErrorException(Response.Status.GATEWAY_TIMEOUT, e);
         } finally {
             cleanupHelper(evalFuture, file, upload.fileName(), start);
         }
