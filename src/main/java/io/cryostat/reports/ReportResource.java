@@ -37,7 +37,6 @@ import java.util.Optional;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.function.Predicate;
 
 import javax.net.ssl.HttpsURLConnection;
@@ -137,28 +136,14 @@ public class ReportResource {
     @Produces(MediaType.TEXT_PLAIN)
     public void healthCheck() {}
 
-    @Bulkhead
-    @Blocking
+    @Bulkhead(value = 1)
+    @Timeout(value = 29000, unit = ChronoUnit.MILLIS)
     @Path("remote_report")
     @Produces(MediaType.APPLICATION_JSON)
     @Consumes(MediaType.MULTIPART_FORM_DATA)
     @POST
     public String getReportFromPresigned(RoutingContext ctx, @BeanParam PresignedFormData form)
             throws IOException, URISyntaxException {
-        // TODO queue these requests so we don't overload ourselves, in particular by reading
-        // multiple JFR files into memory at once for analysis. We should process these serially
-        // from the queue. If we are getting overloaded then our response time to each subsequent
-        // request will continue to grow unbounded, so at some point we should stop accepting
-        // requests when the queue is too long.
-        // Since this is a @Blocking method that runs on a worker thread pool, can we implement this
-        // serial queueing behaviour by simply synchronizing on a shared singleton resource ex. the
-        // generator instance?
-        // A better long-term solution would be to use a shared messaging queue between Cryostat and
-        // the report generators, so that Cryostat can put up a URL for a presigned recording to be
-        // processed and a free report generator can claim that work item and then post back the
-        // report response
-        long timeout = TimeUnit.MILLISECONDS.toNanos(Long.parseLong(timeoutMs));
-        long start = System.nanoTime();
 
         logger.debugv("Attempting to download presigned recording from {0}", form.uri);
         HttpURLConnection httpConn = (HttpURLConnection) form.uri.toURL().openConnection();
@@ -168,16 +153,11 @@ public class ReportResource {
             Future<Map<String, AnalysisResult>> evalMapFuture = null;
 
             evalMapFuture = generator.generateEvalMapInterruptibly(stream, predicate);
-            long elapsed = System.nanoTime() - start;
             ctxHelper(ctx, evalMapFuture);
-            return mapper.writeValueAsString(
-                    evalMapFuture.get(timeout - elapsed, TimeUnit.NANOSECONDS));
+            return mapper.writeValueAsString(evalMapFuture.get());
         } catch (ExecutionException | InterruptedException e) {
             logger.error(e);
             throw new InternalServerErrorException(e);
-        } catch (TimeoutException e) {
-            logger.error(e);
-            throw new ServerErrorException(Response.Status.GATEWAY_TIMEOUT, e);
         } catch (Exception e) {
             logger.error(e);
             throw e;
@@ -187,7 +167,8 @@ public class ReportResource {
     }
 
     @Blocking
-    @Bulkhead
+    @Bulkhead(value = 1)
+    @Timeout(value = 29000, unit = ChronoUnit.MILLIS)
     @Path("report")
     @Produces(MediaType.APPLICATION_JSON)
     @Consumes(MediaType.MULTIPART_FORM_DATA)
@@ -198,9 +179,7 @@ public class ReportResource {
 
         Pair<java.nio.file.Path, Pair<Long, Long>> uploadResult = handleUpload(upload);
         java.nio.file.Path file = uploadResult.getLeft();
-        long timeout = TimeUnit.MILLISECONDS.toNanos(Long.parseLong(timeoutMs));
         long start = uploadResult.getRight().getLeft();
-        long elapsed = uploadResult.getRight().getRight();
 
         if (StringUtils.isNotBlank(form.filter)) {
             logger.debugv("Received request with filter: {0}", form.filter);
@@ -211,12 +190,9 @@ public class ReportResource {
         try (var stream = fs.newInputStream(file)) {
             evalMapFuture = generator.generateEvalMapInterruptibly(stream, predicate);
             ctxHelper(ctx, evalMapFuture);
-            return mapper.writeValueAsString(
-                    evalMapFuture.get(timeout - elapsed, TimeUnit.NANOSECONDS));
+            return mapper.writeValueAsString(evalMapFuture.get());
         } catch (ExecutionException | InterruptedException e) {
             throw new InternalServerErrorException(e);
-        } catch (TimeoutException e) {
-            throw new ServerErrorException(Response.Status.GATEWAY_TIMEOUT, e);
         } finally {
             cleanupHelper(evalMapFuture, file, upload.fileName(), start);
         }
@@ -299,7 +275,7 @@ public class ReportResource {
     }
 
     @Blocking
-    @Bulkhead
+    @Bulkhead(value = 1)
     @Timeout(value = 29000, unit = ChronoUnit.MILLIS)
     @Path("heapdump/report")
     @Produces(MediaType.APPLICATION_JSON)
