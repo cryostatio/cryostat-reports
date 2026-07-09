@@ -258,9 +258,12 @@ public class ReportResource {
             RoutingContext ctx, @BeanParam PresignedHeapDumpFormData form)
             throws IOException, URISyntaxException {
         HttpURLConnection httpConn = (HttpURLConnection) form.uri.toURL().openConnection();
+        java.nio.file.Path tmpFile = Files.createTempFile("", ".hprof");
         try (var stream = getPresignedObjectStream(httpConn)) {
+            // Copy the heap dump from storage to a temporary file for analysis
+            Files.copy(stream, tmpFile, StandardCopyOption.REPLACE_EXISTING);
             Future<HeapDumpAnalysis> evalFuture = null;
-            evalFuture = heapDumpGenerator.generate(stream, heapDumpMemoryLimit);
+            evalFuture = heapDumpGenerator.generate(tmpFile.toString(), heapDumpMemoryLimit);
             ctxHelper(ctx, evalFuture);
             return mapper.writeValueAsString(evalFuture.get());
         } catch (ExecutionException | InterruptedException e) {
@@ -271,6 +274,7 @@ public class ReportResource {
             throw e;
         } finally {
             httpConn.disconnect();
+            Files.deleteIfExists(tmpFile);
         }
     }
 
@@ -291,8 +295,8 @@ public class ReportResource {
 
         Future<HeapDumpAnalysis> evalFuture = null;
 
-        try (var stream = fs.newInputStream(file)) {
-            evalFuture = heapDumpGenerator.generate(stream, heapDumpMemoryLimit);
+        try {
+            evalFuture = heapDumpGenerator.generate(file.toString(), heapDumpMemoryLimit);
             ctxHelper(ctx, evalFuture);
             return mapper.writeValueAsString(evalFuture.get());
         } catch (ExecutionException | InterruptedException e) {
