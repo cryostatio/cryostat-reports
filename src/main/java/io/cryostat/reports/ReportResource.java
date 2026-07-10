@@ -263,7 +263,7 @@ public class ReportResource {
             // Copy the heap dump from storage to a temporary file for analysis
             Files.copy(stream, tmpFile, StandardCopyOption.REPLACE_EXISTING);
             Future<HeapDumpAnalysis> evalFuture = null;
-            evalFuture = heapDumpGenerator.generate(tmpFile.toString(), heapDumpMemoryLimit);
+            evalFuture = heapDumpGenerator.generate(tmpFile, heapDumpMemoryLimit);
             ctxHelper(ctx, evalFuture);
             return mapper.writeValueAsString(evalFuture.get());
         } catch (ExecutionException | InterruptedException e) {
@@ -296,7 +296,7 @@ public class ReportResource {
         Future<HeapDumpAnalysis> evalFuture = null;
 
         try {
-            evalFuture = heapDumpGenerator.generate(file.toString(), heapDumpMemoryLimit);
+            evalFuture = heapDumpGenerator.generate(file, heapDumpMemoryLimit);
             ctxHelper(ctx, evalFuture);
             return mapper.writeValueAsString(evalFuture.get());
         } catch (ExecutionException | InterruptedException e) {
