@@ -14,7 +14,7 @@
 # docker run -i --rm -p 8080:8080 quarkus/cryostat-reports
 #
 ###
-FROM quay.io/quarkus/quarkus-distroless-image:2.0@sha256:58c30907e6d4417251c90963e1d14e6918a0baa6f8a7d046497584972dc2a378
+FROM quay.io/quarkus/quarkus-distroless-image:2.0@sha256:5d92b19b4dc85959863387ecbad7bcb3ccd425378235eac7a3221eb5d3286855
 COPY target/*-runner /application
 
 EXPOSE 8080
