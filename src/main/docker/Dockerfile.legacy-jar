@@ -21,7 +21,7 @@
 # docker run -i --rm -p 8080:8080 -p 5005:5005 -e JAVA_DEBUG="true" quarkus/cryostat-reports-legacy-jar
 #
 ###
-FROM registry.access.redhat.com/ubi9/openjdk-25:1.24-3@sha256:b2523fbf2851f413c500a37d16f1fef393e8a284f916ed1e353666f3d6db5e49
+FROM registry.access.redhat.com/ubi9/openjdk-25:1.24-3.1785873534@sha256:6766b91bcecb4198a4eefd71c548bf3546f6df29672d1db16a5a9f15eda99c81
 
 ENV LANG='en_US.UTF-8' LANGUAGE='en_US:en'
 
