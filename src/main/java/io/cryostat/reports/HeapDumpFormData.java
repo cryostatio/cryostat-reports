@@ -24,12 +24,4 @@ public class HeapDumpFormData {
     @RestForm
     @PartType(MediaType.APPLICATION_OCTET_STREAM)
     public FileUpload file;
-
-    @RestForm
-    @PartType(MediaType.TEXT_PLAIN)
-    public String heapDumpId;
-
-    @RestForm
-    @PartType(MediaType.TEXT_PLAIN)
-    public String jvmId;
 }
