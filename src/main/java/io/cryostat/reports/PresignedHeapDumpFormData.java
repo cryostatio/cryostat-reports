@@ -25,12 +25,4 @@ public class PresignedHeapDumpFormData {
     @RestForm
     @PartType(MediaType.TEXT_PLAIN)
     public URI uri;
-
-    @RestForm
-    @PartType(MediaType.TEXT_PLAIN)
-    public String heapDumpId;
-
-    @RestForm
-    @PartType(MediaType.TEXT_PLAIN)
-    public String jvmId;
 }
