@@ -76,7 +76,7 @@ jobs:
           --jobs=2
     - name: Push to quay.io
       id: push-to-quay
-      uses: redhat-actions/push-to-registry@5860fc963bf8f2b3221773a023141612f010c469 # v2
+      uses: redhat-actions/push-to-registry@b5dbf66601070e17aa7816815a64b9f35cd860da # v2.1.2
       with:
         image: cryostat-reports
         tags: ${{ steps.buildah-build.outputs.tags }}
