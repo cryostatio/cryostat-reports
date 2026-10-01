@@ -71,7 +71,7 @@ jobs:
         archs: amd64, arm64
         tags: ${{ env.IMAGE_VERSION }} ${{ github.ref == 'refs/heads/main' && 'latest' || '' }}
         containerfiles: |
-          ./src/main/docker/Dockerfile.jvm
+          ./src/main/docker/Dockerfile
         extra-args: |
           --jobs=2
     - name: Push to quay.io
