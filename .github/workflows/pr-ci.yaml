@@ -73,6 +73,6 @@ jobs:
         archs: amd64, arm64
         tags: ${{ env.IMAGE_VERSION }}
         containerfiles: |
-          ./src/main/docker/Dockerfile.jvm
+          ./src/main/docker/Dockerfile
         extra-args: |
           --jobs=2
