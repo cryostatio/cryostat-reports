@@ -39,11 +39,17 @@
     <com.diffplug.spotless.maven.plugin.version>3.10.4</com.diffplug.spotless.maven.plugin.version>
     <org.codehaus.mojo.build.helper.plugin.version>3.6.2</org.codehaus.mojo.build.helper.plugin.version>
     <io.cryostat.core.version>4.3.0-SNAPSHOT</io.cryostat.core.version>
-    <org.openjdk.jmc.version>9.1.2</org.openjdk.jmc.version>
     <com.mycila.license.maven.plugin.version>5.1.2</com.mycila.license.maven.plugin.version>
   </properties>
   <dependencyManagement>
     <dependencies>
+      <dependency>
+        <groupId>io.cryostat</groupId>
+        <artifactId>cryostat-core-bom</artifactId>
+        <version>${io.cryostat.core.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
       <dependency>
         <groupId>${quarkus.platform.group-id}</groupId>
         <artifactId>${quarkus.platform.artifact-id}</artifactId>
@@ -73,12 +79,10 @@
     <dependency>
       <groupId>io.cryostat</groupId>
       <artifactId>cryostat-core</artifactId>
-      <version>${io.cryostat.core.version}</version>
     </dependency>
     <dependency>
       <groupId>io.cryostat</groupId>
       <artifactId>libcryostat</artifactId>
-      <version>${io.cryostat.core.version}</version>
     </dependency>
 
     <dependency>
@@ -98,22 +102,18 @@
     <dependency>
       <groupId>org.openjdk.jmc</groupId>
       <artifactId>common</artifactId>
-      <version>${org.openjdk.jmc.version}</version>
     </dependency>
     <dependency>
       <groupId>org.openjdk.jmc</groupId>
       <artifactId>flightrecorder</artifactId>
-      <version>${org.openjdk.jmc.version}</version>
     </dependency>
     <dependency>
       <groupId>org.openjdk.jmc</groupId>
       <artifactId>flightrecorder.rules</artifactId>
-      <version>${org.openjdk.jmc.version}</version>
     </dependency>
     <dependency>
       <groupId>org.openjdk.jmc</groupId>
       <artifactId>flightrecorder.rules.jdk</artifactId>
-      <version>${org.openjdk.jmc.version}</version>
     </dependency>
   </dependencies>
   <build>
