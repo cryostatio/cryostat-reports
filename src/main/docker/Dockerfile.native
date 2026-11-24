@@ -14,7 +14,7 @@
 # docker run -i --rm -p 8080:8080 quarkus/cryostat-reports
 #
 ###
-FROM registry.access.redhat.com/ubi8/ubi-minimal:8.5
+FROM registry.access.redhat.com/ubi8/ubi-minimal:8.10-1795498801@sha256:1068268a5dc71d7b392ab17c07de3ebf64e18d7f34e9b63d213b0a9008993ec1
 WORKDIR /work/
 RUN chown 1001 /work \
     && chmod "g+rwX" /work \
