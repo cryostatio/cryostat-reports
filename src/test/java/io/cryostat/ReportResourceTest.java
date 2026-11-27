@@ -26,10 +26,9 @@ import java.util.Map;
 import java.util.Set;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.JsonMappingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 import io.quarkus.test.junit.QuarkusTest;
 import io.restassured.http.ContentType;
 import org.hamcrest.MatcherAssert;
@@ -39,6 +38,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.openjdk.jmc.flightrecorder.rules.IRule;
 import org.openjdk.jmc.flightrecorder.rules.RuleRegistry;
+import tools.jackson.databind.DatabindException;
 
 @QuarkusTest
 public class ReportResourceTest {
@@ -57,7 +57,7 @@ public class ReportResourceTest {
                 "/profiling_sample.jfr.gz",
             })
     public void testReportEndpoint(String filePath)
-            throws URISyntaxException, JsonMappingException, JsonProcessingException {
+            throws URISyntaxException, DatabindException {
         File jfr = Paths.get(getClass().getResource(filePath).toURI()).toFile();
         String response =
                 given().contentType("multipart/form-data")
@@ -72,7 +72,7 @@ public class ReportResourceTest {
                         .extract()
                         .asString();
 
-        ObjectMapper oMapper = new ObjectMapper();
+        ObjectMapper oMapper = new JsonMapper();
         Map<String, RuleEvaluation> map =
                 oMapper.readValue(response, new TypeReference<Map<String, RuleEvaluation>>() {});
         int numRules = RuleRegistry.getRules().size() + NUM_CUSTOM_RULES;
@@ -104,7 +104,7 @@ public class ReportResourceTest {
                 "/profiling_sample.jfr.gz",
             })
     public void testReportEndpointWithFilters(String filePath)
-            throws URISyntaxException, JsonMappingException, JsonProcessingException {
+            throws URISyntaxException, DatabindException {
         File jfr = Paths.get(getClass().getResource(filePath).toURI()).toFile();
         String response =
                 given().contentType("multipart/form-data")
@@ -120,7 +120,7 @@ public class ReportResourceTest {
                         .extract()
                         .asString();
 
-        ObjectMapper oMapper = new ObjectMapper();
+        ObjectMapper oMapper = new JsonMapper();
         Map<String, RuleEvaluation> map =
                 oMapper.readValue(response, new TypeReference<Map<String, RuleEvaluation>>() {});
 
@@ -173,7 +173,7 @@ public class ReportResourceTest {
                 "/profiling_sample.jfr.gz",
             })
     public void testReportEndpointWithInvalidFilters(String filePath)
-            throws URISyntaxException, JsonMappingException, JsonProcessingException {
+            throws URISyntaxException, DatabindException {
         File jfr = Paths.get(getClass().getResource(filePath).toURI()).toFile();
         String response =
                 given().contentType("multipart/form-data")
@@ -189,7 +189,7 @@ public class ReportResourceTest {
                         .extract()
                         .asString();
 
-        ObjectMapper oMapper = new ObjectMapper();
+        ObjectMapper oMapper = new JsonMapper();
         Map<String, RuleEvaluation> map =
                 oMapper.readValue(response, new TypeReference<Map<String, RuleEvaluation>>() {});
 
